@@ -38,10 +38,16 @@ import magi.aenerv7.ppembytv.ui.rememberLoad
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
+private data class LibraryRow(
+    val library: magi.aenerv7.ppembytv.api.BaseItemDto,
+    val items: List<BaseItemDto>,
+)
+
 private data class HomeData(
     val resume: List<BaseItemDto>,
-    val latest: List<BaseItemDto>,
     val nextUp: List<BaseItemDto>,
+    val latest: List<BaseItemDto>,
+    val libraryRows: List<LibraryRow>,
 )
 
 private suspend fun loadHome(): HomeData {
@@ -50,9 +56,24 @@ private suspend fun loadHome(): HomeData {
     val userId = server.userId
     return coroutineScope {
         val r1 = async { runCatching { api.getResumeItems(userId, limit = 24).body()?.items ?: emptyList() }.getOrDefault(emptyList()) }
-        val r2 = async { runCatching { api.getLatestMedia(userId, limit = 24).body() ?: emptyList() }.getOrDefault(emptyList()) }
-        val r3 = async { runCatching { api.getNextUp(userId, limit = 24).body()?.items ?: emptyList() }.getOrDefault(emptyList()) }
-        HomeData(r1.await(), r2.await(), r3.await())
+        val r2 = async { runCatching { api.getNextUp(userId, limit = 24).body()?.items ?: emptyList() }.getOrDefault(emptyList()) }
+        val r3 = async { runCatching { api.getLatestMedia(userId, limit = 24).body() ?: emptyList() }.getOrDefault(emptyList()) }
+        val r4 = async { runCatching { api.getLibraries(userId).body()?.items ?: emptyList() }.getOrDefault(emptyList()) }
+        // 各媒体库的最新内容（电影/剧集类库），空库跳过
+        val libraries = r4.await()
+            .filter { it.type == "CollectionFolder" && (it.collectionType == "movies" || it.collectionType == "tvshows") }
+        val libRows = libraries
+            .map { lib ->
+                async {
+                    val items = runCatching {
+                        api.getLatestMedia(userId, limit = 12, parentId = lib.id).body() ?: emptyList()
+                    }.getOrDefault(emptyList())
+                    LibraryRow(lib, items)
+                }
+            }
+            .map { it.await() }
+            .filter { it.items.isNotEmpty() }
+        HomeData(r1.await(), r2.await(), r3.await(), libRows)
     }
 }
 
@@ -100,6 +121,11 @@ fun HomeScreen(navigator: AppNavigator) {
                             ItemRow("接下来观看", data.nextUp, server, navigator, PaddingValues(horizontal = 24.dp))
                         }
                     }
+                    if (data.latest.isNotEmpty()) {
+                        item {
+                            ItemRow("最新添加", data.latest, server, navigator, PaddingValues(horizontal = 24.dp))
+                        }
+                    }
                     val movies = data.latest.filter { it.type == "Movie" }
                     if (movies.isNotEmpty()) {
                         item {
@@ -110,6 +136,17 @@ fun HomeScreen(navigator: AppNavigator) {
                     if (series.isNotEmpty()) {
                         item {
                             ItemRow("最新剧集", series, server, navigator, PaddingValues(horizontal = 24.dp))
+                        }
+                    }
+                    data.libraryRows.forEach { row ->
+                        item {
+                            ItemRow(
+                                title = "${row.library.name} · 最新",
+                                items = row.items,
+                                server = server,
+                                navigator = navigator,
+                                contentPadding = PaddingValues(horizontal = 24.dp),
+                            )
                         }
                     }
                     if (data.latest.isEmpty() && data.resume.isEmpty() && data.nextUp.isEmpty()) {

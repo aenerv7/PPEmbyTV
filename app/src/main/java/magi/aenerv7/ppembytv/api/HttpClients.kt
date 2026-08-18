@@ -1,5 +1,6 @@
 package magi.aenerv7.ppembytv.api
 
+import magi.aenerv7.ppembytv.BuildConfig
 import magi.aenerv7.ppembytv.data.ProxySettings
 import magi.aenerv7.ppembytv.data.ServerConfig
 import magi.aenerv7.ppembytv.data.isValid
@@ -84,6 +85,9 @@ object HttpClients {
         }
 
         builder.addInterceptor(authInterceptor(server))
+        if (BuildConfig.DEBUG) {
+            builder.addInterceptor(buildLoggingInterceptor())
+        }
         return builder.build()
     }
 
@@ -121,7 +125,7 @@ object HttpClients {
     /** 播放器使用的日志级别（默认 NONE，可开启调试） */
     fun buildLoggingInterceptor(): HttpLoggingInterceptor {
         val interceptor = HttpLoggingInterceptor()
-        interceptor.level = HttpLoggingInterceptor.Level.NONE
+        interceptor.level = HttpLoggingInterceptor.Level.BASIC
         return interceptor
     }
 

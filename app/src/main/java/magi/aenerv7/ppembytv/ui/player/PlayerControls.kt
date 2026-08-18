@@ -91,7 +91,7 @@ fun PlayerControls(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TvButton("← 退出", onExit)
+            TvButton("退出", onExit)
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -153,17 +153,17 @@ fun PlayerControls(
             Spacer(Modifier.height(14.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TvButton(if (isPlaying) "⏸ 暂停" else "▶ 播放", onPlayPause)
-                TvButton("⏪ -10秒", { onSeekBy(-10_000) })
-                TvButton("⏩ +30秒", { onSeekBy(30_000) })
+                TvButton(if (isPlaying) "暂停" else "播放", onPlayPause)
+                TvButton("-10秒", { onSeekBy(-10_000) })
+                TvButton("+30秒", { onSeekBy(30_000) })
                 TvButton("倍速 ${speed}x", onCycleSpeed)
                 TvButton(
                     if (subtitleOffsetMs == 0L) "字幕延迟" else "字幕 ${if (subtitleOffsetMs > 0) "+" else ""}${subtitleOffsetMs / 1000}s",
                     { onSubtitleOffset(-500) },
                 )
                 TvButton("字幕 +0.5s", { onSubtitleOffset(500) })
-                TvButton("🎵 音轨", { trackPanel = TrackPanel.AUDIO })
-                TvButton("💬 字幕", { trackPanel = TrackPanel.SUBTITLE })
+                TvButton("音轨", { trackPanel = TrackPanel.AUDIO })
+                TvButton("字幕", { trackPanel = TrackPanel.SUBTITLE })
             }
         }
 

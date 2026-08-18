@@ -84,6 +84,7 @@ data class BaseItemDto(
     @SerialName("ChannelId") val channelId: String? = null,
     @SerialName("IsFolder") val isFolder: Boolean = false,
     @SerialName("DisplayPreferencesId") val displayPreferencesId: String? = null,
+    @SerialName("CollectionType") val collectionType: String? = null,
 ) {
     val primaryImageTag: String? get() = imageTags?.get("Primary")
     val backdropImageTag: String? get() = imageTags?.get("Backdrop")
@@ -165,7 +166,7 @@ data class MediaStreamInfo(
 
 @Serializable
 data class PlaybackInfoRequest(
-    @SerialName("DeviceProfile") val deviceProfile: DeviceProfile = DeviceProfile(),
+    @SerialName("DeviceProfile") val deviceProfile: DeviceProfile = magi.aenerv7.ppembytv.playback.DeviceCapabilities.profile(),
     @SerialName("StartTimeTicks") val startTimeTicks: Long = 0L,
     @SerialName("IsPlayback") val isPlayback: Boolean = false,
     @SerialName("MaxStreamingBitrate") val maxStreamingBitrate: Long? = null,
@@ -175,16 +176,13 @@ data class PlaybackInfoRequest(
 data class DeviceProfile(
     @SerialName("MaxStreamingBitrate") val maxStreamingBitrate: Long = 120_000_000,
     @SerialName("MaxStaticBitrate") val maxStaticBitrate: Long = 120_000_000,
-    @SerialName("DirectPlayProfiles") val directPlayProfiles: List<DirectPlayProfile> = defaultDirectPlayProfiles,
+    @SerialName("DirectPlayProfiles") val directPlayProfiles: List<DirectPlayProfile> = emptyList(),
     @SerialName("TranscodingProfiles") val transcodingProfiles: List<TranscodingProfile> = defaultTranscodingProfiles,
 ) {
     companion object {
-        val defaultDirectPlayProfiles = listOf(
-            DirectPlayProfile("mp4,mkv,m4v,mov,ts,m2ts,webm,avi,flv,3gp,ogv", "Video", null, "h264,hevc,mpeg2video,vp8,vp9,av1", null),
-            DirectPlayProfile("mp4,mkv,m4v,mov", "Audio", "aac,ac3,eac3,mp3,flac,opus,vorbis,dts,truehd", null, null),
-        )
         val defaultTranscodingProfiles = listOf(
-            TranscodingProfile("hls", "h264", "aac", "Video", "Copy", 0L, true),
+            TranscodingProfile("mp4", "h264", "aac", "Video", "Streaming", 2, false),
+            TranscodingProfile("hls", "h264", "aac", "Video", "Streaming", 2, true),
         )
     }
 }
@@ -196,6 +194,8 @@ data class DirectPlayProfile(
     @SerialName("AudioCodec") val audioCodec: String?,
     @SerialName("VideoCodec") val videoCodec: String?,
     @SerialName("Protocol") val protocol: String?,
+    @SerialName("MaxWidth") val maxWidth: Int? = null,
+    @SerialName("MaxHeight") val maxHeight: Int? = null,
 )
 
 @Serializable

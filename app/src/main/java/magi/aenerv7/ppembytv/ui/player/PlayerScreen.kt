@@ -53,12 +53,14 @@ import kotlinx.coroutines.withContext
 data class PlaybackSession(
     val itemId: String,
     val itemName: String,
+    val seriesName: String?,
     val mediaSourceId: String,
     val playSessionId: String,
     val playMethod: String,
     val runTimeTicks: Long?,
     val mediaItem: MediaItem,
     val startPositionMs: Long,
+    val mediaSource: magi.aenerv7.ppembytv.api.MediaSourceInfo,
 )
 
 private sealed interface PlayerUiState {
@@ -112,6 +114,24 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                val s = (uiState as? PlayerUiState.Ready)?.session
+                if (s != null && shouldFallbackToTranscode(error, s)) {
+                    // 直连解码失败（如 4K HEVC 超出设备解码能力）→ 自动回退到服务器转码
+                    val server = Session.activeServer.value
+                    if (server != null) {
+                        val transcodeUrl = PlaybackUrlBuilder.transcodeUrl(server, s.itemId, s.mediaSource, s.playSessionId)
+                        if (transcodeUrl != null) {
+                            val mediaItem = buildMediaItem(s.itemId, s.itemName, s.seriesName, transcodeUrl, s.mediaSource)
+                            val transcodeSession = s.copy(
+                                playMethod = "Transcode",
+                                mediaItem = mediaItem,
+                            )
+                            uiState = PlayerUiState.Ready(transcodeSession)
+                            preparePlayer(player, transcodeSession)
+                            return
+                        }
+                    }
+                }
                 errorText = error.message ?: "播放失败（${error.errorCodeName}）"
             }
         }
@@ -226,6 +246,20 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        // 点击空白区域切换控制栏。
+        // 必须放在控制栏/提示层之下：若放在最上层，所有触屏点击都会被它拦截，
+        // 导致点按钮/空白都变成"隐藏控制栏"。
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    controlsVisible = !controlsVisible
+                }
+        )
+
         if (uiState is PlayerUiState.Loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("正在加载播放…", color = Color.White, fontSize = 16.sp)
@@ -282,18 +316,6 @@ fun PlayerScreen(
                 )
             }
         }
-
-        // 点击切换控制栏
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) {
-                    controlsVisible = !controlsVisible
-                }
-        )
     }
 
     DisposableEffect(Unit) {
@@ -323,47 +345,67 @@ private suspend fun loadPlaybackSession(itemId: String, startTicks: Long): Resul
         val url = if (direct) {
             PlaybackUrlBuilder.directStreamUrl(server, itemId, source)
         } else {
-            PlaybackUrlBuilder.transcodeUrl(server, itemId, source)
+            PlaybackUrlBuilder.transcodeUrl(server, itemId, source, playbackInfo?.playSessionId)
                 ?: throw Exception("该媒体无法直接播放且不支持转码")
         }
 
-        val builder = MediaItem.Builder()
-            .setMediaId(itemId)
-            .setUri(url)
-            .setMediaMetadata(
-                androidx.media3.common.MediaMetadata.Builder()
-                    .setTitle(item.name)
-                    .setArtist(item.seriesName)
-                    .build()
-            )
-
-        // 外挂/提取文本字幕
-        val externalSubs = source.mediaStreams
-            .filter { it.type == "Subtitle" && it.isExternal && it.isTextSubtitleStream }
-        if (externalSubs.isNotEmpty()) {
-            val subtitles = externalSubs.mapNotNull { stream ->
-                val subUrl = PlaybackUrlBuilder.subtitleUrl(server, itemId, source, stream) ?: return@mapNotNull null
-                MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subUrl))
-                    .setMimeType(subtitleMimeType(stream.codec))
-                    .setLanguage(stream.language)
-                    .setLabel(stream.displayTitle ?: stream.language ?: "字幕")
-                    .setSelectionFlags(if (stream.isDefault) C.SELECTION_FLAG_DEFAULT else 0)
-                    .build()
-            }
-            builder.setSubtitleConfigurations(subtitles)
-        }
+        val mediaItem = buildMediaItem(itemId, item.name, item.seriesName, url, source)
 
         PlaybackSession(
             itemId = itemId,
             itemName = item.name,
+            seriesName = item.seriesName,
             mediaSourceId = source.id,
             playSessionId = playbackInfo?.playSessionId.orEmpty(),
             playMethod = if (direct) "DirectStream" else "Transcode",
             runTimeTicks = source.runTimeTicks ?: item.runTimeTicks,
-            mediaItem = builder.build(),
+            mediaItem = mediaItem,
             startPositionMs = (startTicks / 10_000).coerceAtLeast(0L),
+            mediaSource = source,
         )
     }
+}
+
+/** 构建 MediaItem（统一用于首播与转码回退）：URL + 标题 + 外挂/提取文本字幕 */
+private fun buildMediaItem(
+    itemId: String,
+    name: String,
+    seriesName: String?,
+    url: String,
+    source: magi.aenerv7.ppembytv.api.MediaSourceInfo,
+): MediaItem {
+    val builder = MediaItem.Builder()
+        .setMediaId(itemId)
+        .setUri(url)
+        .setMediaMetadata(
+            androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(name)
+                .setArtist(seriesName)
+                .build()
+        )
+
+    val server = Session.activeServer.value
+    val externalSubs = source.mediaStreams
+        .filter { it.type == "Subtitle" && it.isExternal && it.isTextSubtitleStream }
+    if (server != null && externalSubs.isNotEmpty()) {
+        val subtitles = externalSubs.mapNotNull { stream ->
+            val subUrl = PlaybackUrlBuilder.subtitleUrl(server, itemId, source, stream) ?: return@mapNotNull null
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subUrl))
+                .setMimeType(subtitleMimeType(stream.codec))
+                .setLanguage(stream.language)
+                .setLabel(stream.displayTitle ?: stream.language ?: "字幕")
+                .setSelectionFlags(if (stream.isDefault) C.SELECTION_FLAG_DEFAULT else 0)
+                .build()
+        }
+        builder.setSubtitleConfigurations(subtitles)
+    }
+    return builder.build()
+}
+
+/** 解码类错误（解码器初始化失败 / 格式超出设备能力等）才回退转码；网络/源错误保持原样 */
+private fun shouldFallbackToTranscode(error: PlaybackException, session: PlaybackSession): Boolean {
+    if (session.playMethod == "Transcode") return false
+    return error.errorCode in 4000..4004
 }
 
 private fun preparePlayer(player: ExoPlayer, session: PlaybackSession) {

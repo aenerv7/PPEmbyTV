@@ -192,7 +192,9 @@ fun PasswordField(
 }
 
 /**
- * 海报卡片（电影/剧集/剧集集）。
+ * 海报卡片（电影/剧集/剧集集）：海报在上、标题与副标题在下（带合理间距）。
+ * 注意必须整体包在一个 Column 内——若海报与文字作为两个根节点直接平铺，
+ * Lazy 容器会把它们横向摆放，导致文字紧贴封面右侧、与相邻卡片重叠。
  */
 @Composable
 fun PosterCard(
@@ -207,83 +209,93 @@ fun PosterCard(
     imageLoader: coil.ImageLoader? = null,
 ) {
     val (interactionSource, focused) = rememberFocusState()
-    Box(
-        modifier = modifier
-            .width(width)
-            .height(height)
-            .tvFocus(interactionSource, focused)
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+    Column(
+        modifier = modifier.width(width),
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1C1F26))
+                .width(width)
+                .height(height)
+                .tvFocus(interactionSource, focused)
+                .clickable(interactionSource = interactionSource, indication = null) { onClick() }
         ) {
-            if (imageUrl != null) {
-                AsyncImage(
-                    model = imageUrl,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    imageLoader = imageLoader ?: coil.compose.LocalImageLoader.current,
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = title.take(1).ifEmpty { "?" },
-                        color = Color(0xFF555B66),
-                        fontSize = 42.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-            // 观看进度条
-            if (showProgress != null && showProgress > 0f) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .background(Color.Black.copy(alpha = 0.6f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(showProgress.coerceIn(0f, 1f))
-                            .height(4.dp)
-                            .background(Color(0xFF4DA3FF))
-                    )
-                }
-            }
-        }
-        if (focused) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Transparent)
-            )
+                    .background(Color(0xFF1C1F26))
+            ) {
+                if (imageUrl != null) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        imageLoader = imageLoader ?: coil.compose.LocalImageLoader.current,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = title.take(1).ifEmpty { "?" },
+                            color = Color(0xFF555B66),
+                            fontSize = 42.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+                // 观看进度条
+                if (showProgress != null && showProgress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .background(Color.Black.copy(alpha = 0.6f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(showProgress.coerceIn(0f, 1f))
+                                .height(4.dp)
+                                .background(Color(0xFF4DA3FF))
+                        )
+                    }
+                }
+            }
+            if (focused) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Transparent)
+                )
+            }
         }
-    }
-    Column(modifier = Modifier.width(width).padding(top = 6.dp)) {
-        Text(
-            text = title,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 14.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (subtitle != null) {
+        // 标题区：与封面之间保留 10dp 空隙，标题与副标题之间 3dp
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+        ) {
             Text(
-                text = subtitle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
         }
     }
 }

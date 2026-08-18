@@ -25,8 +25,12 @@ object PlaybackUrlBuilder {
 
     /**
      * HLS 转码 URL（使用服务器下发的 TranscodingUrl 或自行拼接 master.m3u8）
+     *
+     * 自行拼接时带上 PlaySessionId（HLS 分片按会话鉴权，缺失会返回 400），
+     * 并用 MaxWidth/MaxHeight 把转码输出限制在 1080p 内，
+     * 保证直连解码失败回退转码时，弱解码能力设备也能正常播放。
      */
-    fun transcodeUrl(server: ServerConfig, itemId: String, source: MediaSourceInfo): String? {
+    fun transcodeUrl(server: ServerConfig, itemId: String, source: MediaSourceInfo, playSessionId: String? = null): String? {
         val transcodingUrl = source.transcodingUrl
         if (!transcodingUrl.isNullOrBlank()) {
             return if (transcodingUrl.startsWith("http")) transcodingUrl
@@ -36,7 +40,7 @@ object PlaybackUrlBuilder {
         }
         if (!source.supportsTranscoding) return null
         val path = "Videos/$itemId/master.m3u8"
-        return appendQuery(server.getFullUrl() + path, mapOf(
+        val params = mutableMapOf(
             "api_key" to server.accessToken,
             "MediaSourceId" to source.id,
             "VideoCodec" to "h264",
@@ -44,9 +48,15 @@ object PlaybackUrlBuilder {
             "TranscodingMaxAudioChannels" to "2",
             "RequireAvc" to "true",
             "SubtitleCodec" to "srt",
-            "MaxVideoBitrate" to "20000000",
+            "MaxVideoBitrate" to "12000000",
             "MaxAudioBitrate" to "384000",
-        ))
+            "MaxWidth" to "1920",
+            "MaxHeight" to "1080",
+        )
+        if (!playSessionId.isNullOrBlank()) {
+            params["PlaySessionId"] = playSessionId
+        }
+        return appendQuery(server.getFullUrl() + path, params)
     }
 
     /** 外挂/提取字幕 URL */
@@ -103,10 +113,13 @@ object PlaybackUrlBuilder {
 
     private fun appendQuery(url: String, params: Map<String, String>): String {
         val sb = StringBuilder(url)
-        val separator = if (url.contains("?")) "&" else "?"
+        // 首个参数用 ?，后续参数必须用 &（此前该分隔符只在循环外计算一次，
+        // 导致直连/图片 URL 变成 ?a=1?b=2?c=3，服务器返回 500 → 封面全挂、播放 Source error）
+        var separator = if (url.contains("?")) "&" else "?"
         for ((k, v) in params) {
             if (v.isBlank()) continue
             sb.append(separator).append(k).append("=").append(android.net.Uri.encode(v))
+            separator = "&"
         }
         return sb.toString()
     }
