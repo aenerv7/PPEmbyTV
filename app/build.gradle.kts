@@ -24,9 +24,9 @@ android {
         applicationId = "magi.aenerv7.ppembytv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         // 支持 CI 通过 -PversionName=... 覆盖（发布流程按 tag 打版本）
-        versionName = (project.findProperty("versionName") as String?) ?: "0.0.2"
+        versionName = (project.findProperty("versionName") as String?) ?: "0.0.3"
     }
 
     // 调试签名使用项目内 keystore，避免 AGP 在 ~/.android 生成残留
