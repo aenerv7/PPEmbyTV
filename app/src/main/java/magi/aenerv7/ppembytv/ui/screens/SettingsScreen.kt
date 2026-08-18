@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import magi.aenerv7.ppembytv.AppGraph
 import magi.aenerv7.ppembytv.data.ProxySettings
+import magi.aenerv7.ppembytv.ui.components.PasswordField
 import magi.aenerv7.ppembytv.ui.components.TvButton
 import magi.aenerv7.ppembytv.ui.components.WideCard
 import magi.aenerv7.ppembytv.ui.nav.AppNavigator
@@ -144,7 +145,7 @@ private fun ProxySettingsCard() {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SettingsTextField("用户名（可选）", username, Modifier.weight(1f)) { username = it }
-                SettingsTextField("密码（可选）", password, Modifier.weight(1f), isPassword = true) { password = it }
+                PasswordField("密码（可选）", password, Modifier.weight(1f)) { password = it }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -183,7 +184,6 @@ private fun SettingsTextField(
     value: String,
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text,
-    isPassword: Boolean = false,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -192,7 +192,6 @@ private fun SettingsTextField(
         label = { Text(label, fontSize = 13.sp) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        visualTransformation = if (isPassword) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
         modifier = modifier
             .fillMaxWidth()

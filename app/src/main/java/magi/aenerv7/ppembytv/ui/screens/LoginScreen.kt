@@ -26,11 +26,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import magi.aenerv7.ppembytv.AppGraph
 import magi.aenerv7.ppembytv.api.Session
+import magi.aenerv7.ppembytv.ui.components.PasswordField
 import magi.aenerv7.ppembytv.ui.components.TvButton
 import magi.aenerv7.ppembytv.ui.nav.AppNavigator
 import magi.aenerv7.ppembytv.ui.nav.Screen
@@ -76,7 +76,7 @@ fun LoginScreen(
 
         LoginField("用户名", username, Modifier.fillMaxWidth().width(560.dp)) { username = it }
         Spacer(Modifier.height(12.dp))
-        LoginField("密码", password, Modifier.fillMaxWidth().width(560.dp), isPassword = true) { password = it }
+        PasswordField("密码", password, Modifier.fillMaxWidth().width(560.dp)) { password = it }
 
         if (error != null) {
             Spacer(Modifier.height(10.dp))
@@ -87,7 +87,7 @@ fun LoginScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             TvButton(
                 text = if (busy) "登录中…" else "登录",
-                enabled = !busy && srv != null && username.isNotBlank(),
+                enabled = !busy && srv != null,
                 onClick = {
                     val s = srv ?: return@TvButton
                     scope.launch {
@@ -118,7 +118,6 @@ private fun LoginField(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    isPassword: Boolean = false,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -127,7 +126,6 @@ private fun LoginField(
         label = { Text(label, fontSize = 14.sp) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Text),
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 16.sp),
         modifier = modifier
             .focusable()

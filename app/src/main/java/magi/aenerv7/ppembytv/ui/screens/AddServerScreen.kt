@@ -30,12 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import magi.aenerv7.ppembytv.AppGraph
 import magi.aenerv7.ppembytv.api.Session
 import magi.aenerv7.ppembytv.data.ServerConfig
+import magi.aenerv7.ppembytv.ui.components.PasswordField
 import magi.aenerv7.ppembytv.ui.components.TvButton
 import magi.aenerv7.ppembytv.ui.nav.AppNavigator
 import magi.aenerv7.ppembytv.ui.nav.Screen
@@ -104,7 +104,7 @@ fun AddServerScreen(navigator: AppNavigator) {
             TvTextField("路径（可选，如 emby）", path, Modifier.weight(1f)) { path = it }
         }
         TvTextField("用户名", username) { username = it }
-        TvTextField("密码", password, isPassword = true) { password = it }
+        PasswordField("密码", password) { password = it }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             TvButton(if (directOnly) "● 仅直连（不走代理）" else "仅直连（不走代理）", { directOnly = !directOnly })
@@ -172,15 +172,28 @@ fun parseHostInput(raw: String): Triple<String, String?, Int?> {
 
 /** 认证：AuthenticateByName → 保存 token/userId */
 suspend fun login(server: ServerConfig, username: String, password: String): ServerConfig {
-    val api = Session.apiFor(server)
-    val resp = api.authenticate(mapOf("Username" to username, "Pw" to password))
+    // 设备 ID 必须在登录前生成：部分服务器（如带设备数限制的开心版/魔改版）要求
+    // X-Emby-Authorization 头携带非空 DeviceId，否则返回 400:
+    // "Value cannot be null. (Parameter 'reportedDeviceId')"
+    val deviceId = AppGraph.settingsRepository.getOrCreateDeviceId()
+    val serverWithDevice = server.copy(deviceId = deviceId)
+    val api = Session.apiFor(serverWithDevice)
+    val resp = api.authenticate(
+        mapOf(
+            "Username" to username,
+            "Pw" to password,
+            // 参考 app（ChaiChaiEmbyTV）同时发送 Password 与 Pw，标准 Emby 只认 Pw，
+            // 多带一个字段无副作用，兼容部分魔改服务器
+            "Password" to password,
+            "reportedDeviceId" to deviceId, // 兼容部分魔改服务器；标准 Emby 忽略未知字段
+        ),
+    )
     if (!resp.isSuccessful) {
         val body = resp.errorBody()?.string().orEmpty()
         throw Exception("登录失败（HTTP ${resp.code()}）${if (body.isNotBlank()) body.take(120) else ""}")
     }
     val result = resp.body() ?: throw Exception("服务器响应为空")
     if (result.accessToken.isEmpty()) throw Exception("未获得访问令牌")
-    val deviceId = AppGraph.settingsRepository.getOrCreateDeviceId()
     return server.copy(
         username = username,
         password = password,
@@ -198,7 +211,6 @@ private fun TvTextField(
     value: String,
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text,
-    isPassword: Boolean = false,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -207,7 +219,6 @@ private fun TvTextField(
         label = { Text(label, fontSize = 14.sp) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 16.sp),
         modifier = modifier
             .fillMaxWidth()

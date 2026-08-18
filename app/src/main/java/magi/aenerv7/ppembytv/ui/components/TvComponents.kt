@@ -24,11 +24,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,7 +40,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -110,7 +118,7 @@ fun TvButton(
     )
     val fg by animateColorAsState(
         targetValue = when {
-            !enabled -> Color(0xFF6B7078)
+            !enabled -> Color(0xFF9AA0AA)
             focused -> Color.White
             else -> Color(0xFFE1E2E9)
         },
@@ -132,6 +140,55 @@ fun TvButton(
             maxLines = 1,
         )
     }
+}
+
+/**
+ * 密码输入框（带「显示/隐藏」切换按钮，TV 焦点与触摸均可用）。
+ */
+@Composable
+fun PasswordField(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onChange: (String) -> Unit,
+) {
+    var showPassword by remember { mutableStateOf(false) }
+    val toggleInteraction = remember { MutableInteractionSource() }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label, fontSize = 14.sp) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        visualTransformation = if (showPassword) {
+            VisualTransformation.None
+        } else {
+            PasswordVisualTransformation()
+        },
+        textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
+        trailingIcon = {
+            Box(
+                modifier = Modifier
+                    .focusable(interactionSource = toggleInteraction)
+                    .clickable(
+                        interactionSource = toggleInteraction,
+                        indication = null,
+                    ) { showPassword = !showPassword }
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (showPassword) "隐藏" else "显示",
+                    color = Color(0xFF4DA3FF),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        },
+        modifier = modifier
+            .background(Color(0xFF1A1D24), RoundedCornerShape(8.dp)),
+        shape = RoundedCornerShape(8.dp),
+    )
 }
 
 /**
