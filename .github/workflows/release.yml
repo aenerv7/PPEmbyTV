@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -41,15 +41,13 @@ jobs:
         run: |
           if [ -n "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > MAGI-OpenSource.jks
-            cat > keystore.properties <<EOF
-            storeFile=MAGI-OpenSource.jks
-            storePassword=${{ secrets.SIGNING_STORE_PASSWORD }}
-            keyAlias=${{ secrets.SIGNING_KEY_ALIAS }}
-            keyPassword=${{ secrets.SIGNING_KEY_PASSWORD }}
-            EOF
+            echo "storeFile=MAGI-OpenSource.jks" > keystore.properties
+            echo "storePassword=${{ secrets.SIGNING_STORE_PASSWORD }}" >> keystore.properties
+            echo "keyAlias=${{ secrets.SIGNING_KEY_ALIAS }}" >> keystore.properties
+            echo "keyPassword=${{ secrets.SIGNING_KEY_PASSWORD }}" >> keystore.properties
             echo "::notice::Release signing key restored from secrets"
           else
-            echo "::warning::SIGNING_KEYSTORE_BASE64 not set — release will use the fallback debug signature"
+            echo "::warning::SIGNING_KEYSTORE_BASE64 not set - release will use the fallback debug signature"
           fi
 
       # 版本号：tag 优先（v0.0.1 -> 0.0.1），否则用手动输入或 build.gradle.kts 默认值
