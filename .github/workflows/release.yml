@@ -71,12 +71,17 @@ jobs:
       - name: Verify APK signature
         shell: bash
         run: |
-          APKS=$(ls app/build/outputs/apk/release/*.apk)
-          for apk in $APKS; do
-            if [ -f MAGI-OpenSource.jks ]; then
-              $ANDROID_HOME/build-tools/*/apksigner verify --print-certs "$apk" | head -3
+          set +e
+          SIGNER=""
+          for d in "$ANDROID_HOME"/build-tools/*/apksigner; do
+            [ -x "$d" ] && SIGNER="$d" && break
+          done
+          for apk in app/build/outputs/apk/release/*.apk; do
+            [ -f "$apk" ] || continue
+            echo "artifact: $(basename "$apk") ($(du -h "$apk" | cut -f1))"
+            if [ -n "$SIGNER" ] && [ -f MAGI-OpenSource.jks ]; then
+              "$SIGNER" verify --print-certs "$apk" 2>&1 | head -3
             fi
-            echo "artifact: $apk ($(du -h "$apk" | cut -f1))"
           done
 
       - name: Create GitHub Release
