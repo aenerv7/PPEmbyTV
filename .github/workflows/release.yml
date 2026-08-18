@@ -36,15 +36,21 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       # 从 GitHub Secrets 恢复签名密钥（未配置时回退 debug 签名）
+      # secrets 通过 env 传入，避免直接内联进脚本（GitHub 官方推荐写法）
       - name: Restore signing key
         shell: bash
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
-          if [ -n "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > MAGI-OpenSource.jks
+          if [ -n "$SIGNING_KEYSTORE_BASE64" ]; then
+            echo "$SIGNING_KEYSTORE_BASE64" | base64 -d > MAGI-OpenSource.jks
             echo "storeFile=MAGI-OpenSource.jks" > keystore.properties
-            echo "storePassword=${{ secrets.SIGNING_STORE_PASSWORD }}" >> keystore.properties
-            echo "keyAlias=${{ secrets.SIGNING_KEY_ALIAS }}" >> keystore.properties
-            echo "keyPassword=${{ secrets.SIGNING_KEY_PASSWORD }}" >> keystore.properties
+            echo "storePassword=$SIGNING_STORE_PASSWORD" >> keystore.properties
+            echo "keyAlias=$SIGNING_KEY_ALIAS" >> keystore.properties
+            echo "keyPassword=$SIGNING_KEY_PASSWORD" >> keystore.properties
             echo "::notice::Release signing key restored from secrets"
           else
             echo "::warning::SIGNING_KEYSTORE_BASE64 not set - release will use the fallback debug signature"
