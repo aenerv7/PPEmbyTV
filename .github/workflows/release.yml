@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. 0.0.1). Leave empty to keep build.gradle.kts versionName."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: "11076708"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 从 GitHub Secrets 恢复签名密钥（未配置时回退 debug 签名）
+      - name: Restore signing key
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > MAGI-OpenSource.jks
+            cat > keystore.properties <<EOF
+            storeFile=MAGI-OpenSource.jks
+            storePassword=${{ secrets.SIGNING_STORE_PASSWORD }}
+            keyAlias=${{ secrets.SIGNING_KEY_ALIAS }}
+            keyPassword=${{ secrets.SIGNING_KEY_PASSWORD }}
+            EOF
+            echo "::notice::Release signing key restored from secrets"
+          else
+            echo "::warning::SIGNING_KEYSTORE_BASE64 not set — release will use the fallback debug signature"
+          fi
+
+      # 版本号：tag 优先（v0.0.1 -> 0.0.1），否则用手动输入或 build.gradle.kts 默认值
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release APKs
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version }}
+        run: ./gradlew :app:assembleRelease -PversionName="$VERSION_NAME"
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          APKS=$(ls app/build/outputs/apk/release/*.apk)
+          for apk in $APKS; do
+            if [ -f MAGI-OpenSource.jks ]; then
+              $ANDROID_HOME/build-tools/*/apksigner verify --print-certs "$apk" | head -3
+            fi
+            echo "artifact: $apk ($(du -h "$apk" | cut -f1))"
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: PP TV v${{ steps.version.outputs.version }}
+          body: |
+            ## PP TV（皮皮 TV）v${{ steps.version.outputs.version }}
+
+            Android TV Emby 客户端。功能参考 ChaiChaiEmbyTV（不含弹幕）。
+
+            ### 功能
+            - 🎬 原生 TV 体验（Compose TV 焦点导航）
+            - 🎮 播放器：倍速、多音轨/字幕切换、字幕延迟调整
+            - 📱 扫码配置服务器
+            - 🔄 播放进度自动同步 Emby
+            - 📺 多服务器管理
+            - 🌐 http/socks5 代理
+
+            ### APK
+            - `app-arm64-v8a-release.apk` — 64 位 ARM 设备
+            - `app-armeabi-v7a-release.apk` — 32 位 ARM 设备
+            - `app-universal-release.apk` — 全架构通用包
+
+            仅供学习交流使用。
+          files: |
+            app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
