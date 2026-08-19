@@ -55,6 +55,12 @@ jobs:
             echo "::notice::Release signing key restored from secrets"
           else
             echo "::warning::SIGNING_KEYSTORE_BASE64 not set - release will use the fallback debug signature"
+            # 生成一次性 debug keystore，保证 validateSigningRelease 通过
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US" -storetype PKCS12 2>/dev/null
           fi
 
       # 版本号：tag 优先（v0.0.1 -> 0.0.1），否则用手动输入或 build.gradle.kts 默认值

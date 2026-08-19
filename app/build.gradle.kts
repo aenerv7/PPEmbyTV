@@ -29,7 +29,12 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            storeFile = rootProject.file(".android/debug.keystore")
+            // 项目内自带的 debug keystore（仅本地环境存在）；不存在时保持 AGP 默认
+            // （~/.android/debug.keystore，AGP 会自动生成），保证 CI 可直接构建。
+            val f = rootProject.file(".android/debug.keystore")
+            if (f.exists()) {
+                storeFile = f
+            }
         }
         create("release") {
             if (hasReleaseKey) {
@@ -38,10 +43,19 @@ android {
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
             } else {
-                storeFile = rootProject.file(".android/debug.keystore")
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
+                val f = rootProject.file(".android/debug.keystore")
+                if (f.exists()) {
+                    storeFile = f
+                    storePassword = "android"
+                    keyAlias = "androiddebugkey"
+                    keyPassword = "android"
+                } else {
+                    // CI 且未配置签名 secrets：用 AGP 默认 debug keystore（release workflow 会预先生成）
+                    storeFile = File(System.getProperty("user.home"), ".android/debug.keystore")
+                    storePassword = "android"
+                    keyAlias = "androiddebugkey"
+                    keyPassword = "android"
+                }
             }
         }
     }
