@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization)
 }
 
 import java.util.Properties
@@ -24,25 +23,21 @@ android {
         applicationId = "magi.aenerv7.ppembytv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 2
-        // 支持 CI 通过 -PversionName=... 覆盖（发布流程按 tag 打版本）
-        versionName = (project.findProperty("versionName") as String?) ?: "0.0.3"
+        versionCode = 3
+        versionName = (project.findProperty("versionName") as String?) ?: "0.3.1"
     }
 
-    // 调试签名使用项目内 keystore，避免 AGP 在 ~/.android 生成残留
     signingConfigs {
         getByName("debug") {
             storeFile = rootProject.file(".android/debug.keystore")
         }
         create("release") {
             if (hasReleaseKey) {
-                // 使用 keystore.properties 配置的正式签名
                 storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
             } else {
-                // 无密钥配置时回退 debug 签名，保证克隆后可构建
                 storeFile = rootProject.file(".android/debug.keystore")
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
@@ -53,13 +48,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 使用 MAGI-OpenSource.jks 签名
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
@@ -68,7 +62,6 @@ android {
         }
     }
 
-    // 按 ABI 拆分产物，与参考项目一致：arm64-v8a / armeabi-v7a / universal
     splits {
         abi {
             isEnable = true
@@ -111,6 +104,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.tv.material)
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -123,13 +117,14 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.smoothstreaming)
 
     implementation(libs.retrofit)
-    implementation(libs.retrofit.kotlinx.serialization)
+    implementation(libs.retrofit.gson)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
-    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.gson)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.compose)
     implementation(libs.zxing.core)
     implementation(libs.nanohttpd)
+    implementation(libs.lottie.compose)
 }

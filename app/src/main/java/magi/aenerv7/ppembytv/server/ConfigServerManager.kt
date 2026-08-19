@@ -2,70 +2,67 @@ package magi.aenerv7.ppembytv.server
 
 import android.content.Context
 import android.util.Log
-import magi.aenerv7.ppembytv.data.ServerConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import magi.aenerv7.ppembytv.data.model.ServerConfig
 import java.io.IOException
 
-/**
- * 配置服务管理（对应参考项目的 ConfigServerManager）：
- * 在 8765 端口启动（占用则回退到 8750..8764），返回局域网访问 URL。
- */
 class ConfigServerManager(private val context: Context) {
 
     private var server: ConfigServer? = null
-    private var onConfigReceived: ((ServerConfig) -> Unit)? = null
+    private var onConfigReceived: (suspend (ServerConfig) -> Unit)? = null
+
+    private fun handleConfig(config: ServerConfig) {
+        CoroutineScope(Dispatchers.Main).launch {
+            onConfigReceived?.invoke(config)
+        }
+    }
 
     fun startServer(
-        currentConfig: ServerConfig?,
-        onConfigReceived: (ServerConfig) -> Unit,
+        currentConfig: ServerConfig? = null,
+        onConfigReceived: suspend (ServerConfig) -> Unit,
     ): String? {
         stopServer()
         this.onConfigReceived = onConfigReceived
-
-        val candidates = buildList {
+        val ports = buildList {
             add(DEFAULT_PORT)
-            for (i in 8764 downTo MIN_PORT) add(i)
+            for (i in 8764 downTo MIN_PORT) {
+                add(i)
+            }
         }
-
         var lastError: IOException? = null
-        for (port in candidates) {
+        for (port in ports) {
             try {
-                val s = ConfigServer(port, context, currentConfig) { config ->
-                    this.onConfigReceived?.invoke(config)
-                }
-                server = s
-                s.start()
-                val ip = LocalNetwork.getLocalIpAddress(context)
-                if (ip == null) {
-                    Log.e(TAG, "无法获取本机 IP")
-                    s.stop()
-                    server = null
-                    return null
-                }
-                return "http://$ip:$port/"
+                val configServer = ConfigServer(port, context, currentConfig) { handleConfig(it) }
+                server = configServer
+                configServer.start()
+                return resolveServerUrl(context, port)
             } catch (e: IOException) {
                 server?.stop()
                 server = null
+                Log.e(TAG, "Failed to start server on port $port", e)
                 lastError = e
-                val msg = e.message
-                if (msg == null || !msg.contains("EADDRINUSE")) {
+                val message = e.message
+                if (message == null || !message.contains("EADDRINUSE")) {
                     break
                 }
-                Log.e(TAG, "端口 $port 被占用，尝试下一个")
             }
         }
-        Log.e(TAG, "所有候选端口均启动失败", lastError)
+        if (lastError != null) {
+            Log.e(TAG, "All candidate ports failed", lastError)
+        }
         return null
     }
 
     fun stopServer() {
         server?.stop()
         server = null
-        onConfigReceived = null
     }
 
-    companion object {
-        private const val TAG = "ConfigServerManager"
-        private const val DEFAULT_PORT = 8765
-        private const val MIN_PORT = 8750
+    private companion object {
+        const val TAG = "ConfigServerManager"
+        const val DEFAULT_PORT = 8765
+        const val MIN_PORT = 8750
     }
 }

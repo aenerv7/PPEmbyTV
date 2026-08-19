@@ -1,486 +1,271 @@
 package magi.aenerv7.ppembytv.ui.player
 
-import android.view.ViewGroup
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
+import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.TrackSelectionParameters
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
-import magi.aenerv7.ppembytv.api.HttpClients
-import magi.aenerv7.ppembytv.api.PlaybackProgressInfo
-import magi.aenerv7.ppembytv.api.Session
-import magi.aenerv7.ppembytv.playback.PlaybackReporter
-import magi.aenerv7.ppembytv.playback.PlaybackUrlBuilder
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import magi.aenerv7.ppembytv.data.api.PlaybackProgressInfo
+import magi.aenerv7.ppembytv.data.api.RetrofitClient
+import magi.aenerv7.ppembytv.data.model.MediaItem
+import magi.aenerv7.ppembytv.data.model.MediaSource
+import magi.aenerv7.ppembytv.data.model.PlaybackInfoRequest
+import magi.aenerv7.ppembytv.data.model.ServerConfig
+import magi.aenerv7.ppembytv.data.model.createAndroidTvDeviceProfile
+import magi.aenerv7.ppembytv.ui.components.TvButton
 
-data class PlaybackSession(
-    val itemId: String,
-    val itemName: String,
-    val seriesName: String?,
-    val mediaSourceId: String,
-    val playSessionId: String,
-    val playMethod: String,
-    val runTimeTicks: Long?,
-    val mediaItem: MediaItem,
-    val startPositionMs: Long,
-    val mediaSource: magi.aenerv7.ppembytv.api.MediaSourceInfo,
-)
+private val SPEEDS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
 
-private sealed interface PlayerUiState {
-    data object Loading : PlayerUiState
-    data class Ready(val session: PlaybackSession) : PlayerUiState
-    data class Error(val message: String) : PlayerUiState
-}
-
-private val SPEEDS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-
-/** 全屏播放器（Media3 ExoPlayer + 自定义 TV 控制栏） */
 @Composable
 fun PlayerScreen(
-    itemId: String,
-    startTicks: Long,
-    onExit: () -> Unit,
+    server: ServerConfig?,
+    item: MediaItem,
+    mediaSourceId: String?,
+    onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-
     val player = remember {
-        ExoPlayer.Builder(context)
-            .setRenderersFactory(
-                OffsetRenderersFactory(context) { SubtitleOffset.offsetMs * 1000L }
+        ExoPlayer.Builder(context).build().apply {
+            setHandleAudioBecomingNoisy(true)
+        }
+    }
+    var mediaSource by remember { mutableStateOf<MediaSource?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var startTicks by remember { mutableLongStateOf(item.userData?.playbackPositionTicks ?: 0L) }
+    var speedIndex by remember { mutableIntStateOf(2) }
+    var showControls by remember { mutableStateOf(true) }
+
+    // Fetch playback info and prepare the player.
+    LaunchedEffect(item.id, mediaSourceId) {
+        val s = server ?: return@LaunchedEffect
+        val api = RetrofitClient.getApiService()
+        val userId = RetrofitClient.getUserId()
+        try {
+            val request = PlaybackInfoRequest(
+                deviceProfile = createAndroidTvDeviceProfile(),
+                mediaSourceId = mediaSourceId,
+                startTimeTicks = startTicks,
+                audioStreamIndex = null,
+                subtitleStreamIndex = null,
+                maxStreamingBitrate = null,
+                enableDirectPlay = true,
+                enableDirectStream = true,
+                enableTranscoding = true,
             )
-            .setTrackSelector(DefaultTrackSelector(context))
-            .build()
-            .apply { playWhenReady = true }
-    }
-
-    var uiState by remember { mutableStateOf<PlayerUiState>(PlayerUiState.Loading) }
-    var controlsVisible by remember { mutableStateOf(true) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var positionMs by remember { mutableLongStateOf(0L) }
-    var durationMs by remember { mutableLongStateOf(0L) }
-    var speed by remember { mutableStateOf(1.0f) }
-    var subtitleOffsetMs by remember { mutableLongStateOf(0L) }
-    var errorText by remember { mutableStateOf<String?>(null) }
-
-    // 播放器状态监听
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-
-            override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) {
-                    val d = player.duration
-                    if (d > 0) durationMs = d
+            val response = api.getPlaybackInfo(item.id, userId, autoOpenLiveStream = false, isPlayback = true, body = request)
+            if (response.isSuccessful) {
+                val sources = response.body()?.mediaSources ?: emptyList()
+                val selected = sources.firstOrNull { it.id == mediaSourceId } ?: sources.firstOrNull()
+                mediaSource = selected
+                val url = buildPlaybackUrl(item.id, selected, startTicks)
+                if (url != null) {
+                    player.setMediaItem(Media3Item.fromUri(url))
+                    player.prepare()
+                    player.play()
+                    reportStart(item, selected)
+                } else {
+                    error = "无法构建播放地址"
                 }
+            } else {
+                error = "获取播放信息失败 (${response.code()})"
             }
-
-            override fun onPlayerError(error: PlaybackException) {
-                val s = (uiState as? PlayerUiState.Ready)?.session
-                if (s != null && shouldFallbackToTranscode(error, s)) {
-                    // 直连解码失败（如 4K HEVC 超出设备解码能力）→ 自动回退到服务器转码
-                    val server = Session.activeServer.value
-                    if (server != null) {
-                        val transcodeUrl = PlaybackUrlBuilder.transcodeUrl(server, s.itemId, s.mediaSource, s.playSessionId)
-                        if (transcodeUrl != null) {
-                            val mediaItem = buildMediaItem(s.itemId, s.itemName, s.seriesName, transcodeUrl, s.mediaSource)
-                            val transcodeSession = s.copy(
-                                playMethod = "Transcode",
-                                mediaItem = mediaItem,
-                            )
-                            uiState = PlayerUiState.Ready(transcodeSession)
-                            preparePlayer(player, transcodeSession)
-                            return
-                        }
-                    }
-                }
-                errorText = error.message ?: "播放失败（${error.errorCodeName}）"
-            }
-        }
-        player.addListener(listener)
-        onDispose { player.removeListener(listener) }
-    }
-
-    // 位置刷新
-    LaunchedEffect(Unit) {
-        while (true) {
-            positionMs = player.currentPosition
-            val d = player.duration
-            if (d > 0) durationMs = d
-            delay(500)
+        } catch (e: Exception) {
+            error = "播放失败: ${e.message}"
+        } finally {
+            isLoading = false
         }
     }
 
-    // 控制栏自动隐藏
-    LaunchedEffect(controlsVisible, isPlaying) {
-        if (controlsVisible && isPlaying) {
-            delay(5000)
-            controlsVisible = false
-        }
-    }
-
-    // BACK：先收控制栏，再退出
-    BackHandler(enabled = true) {
-        if (controlsVisible) {
-            controlsVisible = false
-        } else {
-            onExit()
-        }
-    }
-
-    // 加载播放信息并准备播放
-    LaunchedEffect(itemId) {
-        uiState = PlayerUiState.Loading
-        val result = withContext(Dispatchers.IO) { loadPlaybackSession(itemId, startTicks) }
-        result.onSuccess { session ->
-            uiState = PlayerUiState.Ready(session)
-            preparePlayer(player, session)
-        }.onFailure { e ->
-            uiState = PlayerUiState.Error(e.message ?: "播放失败")
-        }
-    }
-
-    // 播放进度上报（开始 + 每 10 秒）
-    val session = (uiState as? PlayerUiState.Ready)?.session
-    LaunchedEffect(session?.playSessionId) {
-        val s = session ?: return@LaunchedEffect
-        val reporter = PlaybackReporter(Session.api())
-        fun info(event: String, paused: Boolean = false) = PlaybackProgressInfo(
-            itemId = s.itemId,
-            mediaSourceId = s.mediaSourceId,
-            positionTicks = (player.currentPosition * 10_000).coerceAtLeast(0L),
-            isPaused = paused || !player.isPlaying,
-            playMethod = s.playMethod,
-            playSessionId = s.playSessionId,
-            canSeek = true,
-            eventName = event,
-            playbackRate = player.playbackParameters.speed.toDouble(),
-            runTimeTicks = s.runTimeTicks,
-        )
-        reporter.reportStart(info("startup"))
-        while (isActive) {
+    // Periodic progress reporting.
+    LaunchedEffect(player, mediaSource) {
+        while (mediaSource != null) {
             delay(10_000)
-            reporter.reportProgress(info("timeupdate"))
-        }
-    }
-
-    // 退出时上报停止（使用独立作用域，避免 rememberCoroutineScope 在销毁时已被取消）
-    val exitScope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO) }
-    DisposableEffect(session) {
-        onDispose {
-            val s = session ?: return@onDispose
-            val pos = player.currentPosition
-            val method = s.playMethod
-            val itemIdS = s.itemId
-            val msId = s.mediaSourceId
-            val psId = s.playSessionId
-            val rt = s.runTimeTicks
-            exitScope.launch {
-                PlaybackReporter(Session.api()).reportStopped(
-                    PlaybackProgressInfo(
-                        itemId = itemIdS,
-                        mediaSourceId = msId,
-                        positionTicks = (pos * 10_000).coerceAtLeast(0L),
-                        isPaused = false,
-                        playMethod = method,
-                        playSessionId = psId,
-                        eventName = "stopped",
-                        runTimeTicks = rt,
-                    )
-                )
-            }
-        }
-    }
-
-    // 画面
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    this.player = player
-                    useController = false
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        // 点击空白区域切换控制栏。
-        // 必须放在控制栏/提示层之下：若放在最上层，所有触屏点击都会被它拦截，
-        // 导致点按钮/空白都变成"隐藏控制栏"。
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) {
-                    controlsVisible = !controlsVisible
-                }
-        )
-
-        if (uiState is PlayerUiState.Loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("正在加载播放…", color = Color.White, fontSize = 16.sp)
-            }
-        }
-
-        errorText?.let { err ->
-            Box(
-                Modifier
-                    .align(Alignment.Center)
-                    .background(Color(0xCC000000), RoundedCornerShape(12.dp))
-                    .padding(24.dp),
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("播放出错", color = Color(0xFFFF6B6B), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text(err, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
-                }
-            }
-        }
-
-        if (controlsVisible) {
-            val s = (uiState as? PlayerUiState.Ready)?.session
-            if (s != null) {
-                PlayerControls(
-                    session = s,
-                    player = player,
-                    isPlaying = isPlaying,
-                    positionMs = positionMs,
-                    durationMs = durationMs,
-                    speed = speed,
-                    subtitleOffsetMs = subtitleOffsetMs,
-                    onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
-                    onSeekBy = { deltaMs -> player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0L)) },
-                    onCycleSpeed = {
-                        val idx = SPEEDS.indexOfFirst { it == speed }
-                        val next = SPEEDS[(idx + 1) % SPEEDS.size]
-                        speed = next
-                        player.setPlaybackSpeed(next)
-                    },
-                    onSubtitleOffset = { deltaMs ->
-                        subtitleOffsetMs += deltaMs
-                        SubtitleOffset.offsetMs = subtitleOffsetMs
-                    },
-                    onSelectTrack = { type, groupIdx, trackIdx -> selectTrack(player, type, groupIdx, trackIdx) },
-                    onDisableSubtitles = {
-                        player.trackSelectionParameters = player.trackSelectionParameters
-                            .buildUpon()
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                            .build()
-                    },
-                    onHide = { controlsVisible = false },
-                    onExit = onExit,
-                    onShowError = { errorText = it },
-                )
-            }
+            val ms = mediaSource ?: continue
+            reportProgress(item, ms, player)
         }
     }
 
     DisposableEffect(Unit) {
-        onDispose { player.release() }
-    }
-}
-
-/** 加载播放信息并构建 MediaItem（返回给 UI 使用） */
-private suspend fun loadPlaybackSession(itemId: String, startTicks: Long): Result<PlaybackSession> {
-    return runCatching {
-        val server = Session.activeServer.value ?: throw IllegalStateException("未选择服务器")
-        val api = Session.api()
-        val userId = server.userId
-
-        val item = api.getItemDetails(userId, itemId).body()
-            ?: throw Exception("无法获取条目信息")
-        val playbackInfo = api.getPlaybackInfo(
-            itemId = itemId,
-            userId = userId,
-            isPlayback = true,
-        ).body()
-        val source = playbackInfo?.mediaSources?.firstOrNull()
-            ?: item.mediaSources?.firstOrNull()
-            ?: throw Exception("没有可播放的媒体源")
-
-        val direct = source.supportsDirectPlay || source.supportsDirectStream
-        val url = if (direct) {
-            PlaybackUrlBuilder.directStreamUrl(server, itemId, source)
-        } else {
-            PlaybackUrlBuilder.transcodeUrl(server, itemId, source, playbackInfo?.playSessionId)
-                ?: throw Exception("该媒体无法直接播放且不支持转码")
+        onDispose {
+            reportStopped(item, mediaSource, player)
+            player.release()
         }
-
-        val mediaItem = buildMediaItem(itemId, item.name, item.seriesName, url, source)
-
-        PlaybackSession(
-            itemId = itemId,
-            itemName = item.name,
-            seriesName = item.seriesName,
-            mediaSourceId = source.id,
-            playSessionId = playbackInfo?.playSessionId.orEmpty(),
-            playMethod = if (direct) "DirectStream" else "Transcode",
-            runTimeTicks = source.runTimeTicks ?: item.runTimeTicks,
-            mediaItem = mediaItem,
-            startPositionMs = (startTicks / 10_000).coerceAtLeast(0L),
-            mediaSource = source,
-        )
     }
-}
 
-/** 构建 MediaItem（统一用于首播与转码回退）：URL + 标题 + 外挂/提取文本字幕 */
-private fun buildMediaItem(
-    itemId: String,
-    name: String,
-    seriesName: String?,
-    url: String,
-    source: magi.aenerv7.ppembytv.api.MediaSourceInfo,
-): MediaItem {
-    val builder = MediaItem.Builder()
-        .setMediaId(itemId)
-        .setUri(url)
-        .setMediaMetadata(
-            androidx.media3.common.MediaMetadata.Builder()
-                .setTitle(name)
-                .setArtist(seriesName)
-                .build()
-        )
-
-    val server = Session.activeServer.value
-    val externalSubs = source.mediaStreams
-        .filter { it.type == "Subtitle" && it.isExternal && it.isTextSubtitleStream }
-    if (server != null && externalSubs.isNotEmpty()) {
-        val subtitles = externalSubs.mapNotNull { stream ->
-            val subUrl = PlaybackUrlBuilder.subtitleUrl(server, itemId, source, stream) ?: return@mapNotNull null
-            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subUrl))
-                .setMimeType(subtitleMimeType(stream.codec))
-                .setLanguage(stream.language)
-                .setLabel(stream.displayTitle ?: stream.language ?: "字幕")
-                .setSelectionFlags(if (stream.isDefault) C.SELECTION_FLAG_DEFAULT else 0)
-                .build()
-        }
-        builder.setSubtitleConfigurations(subtitles)
+    fun cycleSpeed() {
+        speedIndex = (speedIndex + 1) % SPEEDS.size
+        player.setPlaybackSpeed(SPEEDS[speedIndex])
     }
-    return builder.build()
-}
 
-/** 解码类错误（解码器初始化失败 / 格式超出设备能力等）才回退转码；网络/源错误保持原样 */
-private fun shouldFallbackToTranscode(error: PlaybackException, session: PlaybackSession): Boolean {
-    if (session.playMethod == "Transcode") return false
-    return error.errorCode in 4000..4004
-}
-
-private fun preparePlayer(player: ExoPlayer, session: PlaybackSession) {
-    val server = Session.activeServer.value ?: return
-    val client = HttpClients.buildOkHttpClient(server, Session.currentProxy())
-    val dataSourceFactory = OkHttpDataSource.Factory(client)
-    val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
-    player.setMediaSource(mediaSourceFactory.createMediaSource(session.mediaItem))
-    player.prepare()
-    if (session.startPositionMs > 0) {
-        player.seekTo(session.startPositionMs)
-    }
-}
-
-private fun subtitleMimeType(codec: String): String = when (codec.lowercase()) {
-    "ass", "ssa" -> "text/x-ssa"
-    "vtt", "webvtt" -> "text/vtt"
-    else -> "application/x-subrip"
-}
-
-/** 切换音轨/字幕轨 */
-private fun selectTrack(player: ExoPlayer, type: Int, groupIndex: Int, trackIndex: Int) {
-    val groups = player.currentTracks.groups
-    if (groupIndex < 0 || groupIndex >= groups.size) return
-    val group = groups[groupIndex].mediaTrackGroup
-    val params: TrackSelectionParameters = player.trackSelectionParameters
-        .buildUpon()
-        .clearOverridesOfType(type)
-        .setOverrideForType(TrackSelectionOverride(group, trackIndex))
-        .setTrackTypeDisabled(type, false)
-        .build()
-    player.trackSelectionParameters = params
-}
-
-/** 轨道列表（用于控制栏弹层） */
-data class PlayerTrack(
-    val type: Int,
-    val groupIndex: Int,
-    val trackIndex: Int,
-    val label: String,
-    val isSelected: Boolean,
-)
-
-fun currentTracks(player: ExoPlayer): List<PlayerTrack> {
-    val result = mutableListOf<PlayerTrack>()
-    val groups = player.currentTracks.groups
-    for (gi in groups.indices) {
-        val group = groups[gi]
-        val type = group.type
-        if (type != C.TRACK_TYPE_AUDIO && type != C.TRACK_TYPE_TEXT) continue
-        for (ti in 0 until group.length) {
-            val format = group.getTrackFormat(ti)
-            val label = when (type) {
-                C.TRACK_TYPE_AUDIO -> {
-                    val lang = format.language ?: ""
-                    val codec = format.codecs?.substringBefore('.') ?: ""
-                    listOf(lang.ifBlank { null }, codec.ifBlank { null })
-                        .filterNotNull().joinToString(" · ").ifEmpty { "音轨 ${ti + 1}" }
-                }
-                else -> {
-                    val label = format.label
-                    val lang = format.language ?: ""
-                    label?.ifBlank { null } ?: lang.ifBlank { "字幕 ${ti + 1}" }
-                }
+    fun cycleTrack(trackType: Int) {
+        val tracks = player.currentTracks
+        val group = tracks.groups.firstOrNull { it.type == trackType } ?: return
+        val trackGroup = group.mediaTrackGroup
+        val trackCount = trackGroup.length
+        val params = player.trackSelectionParameters
+        val currentIndex = params.overrides[trackGroup]?.trackIndices?.firstOrNull() ?: -1
+        val nextIndex = if (trackType == C.TRACK_TYPE_TEXT) {
+            when {
+                currentIndex < 0 -> 0
+                currentIndex >= trackCount - 1 -> -1
+                else -> currentIndex + 1
             }
-            result.add(
-                PlayerTrack(
-                    type = type,
-                    groupIndex = gi,
-                    trackIndex = ti,
-                    label = label,
-                    isSelected = group.isTrackSelected(ti),
-                )
+        } else {
+            (currentIndex + 1) % trackCount
+        }
+        val builder = params.buildUpon()
+        if (nextIndex < 0) {
+            builder.clearOverridesOfType(trackType)
+        } else {
+            builder.setOverrideForType(TrackSelectionOverride(trackGroup, nextIndex))
+        }
+        player.trackSelectionParameters = builder.build()
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        if (mediaSource != null) {
+            AndroidView(
+                factory = { ctx -> PlayerView(ctx).apply { this.player = player } },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (isLoading) {
+            Text("加载中...", color = Color.White, modifier = Modifier.align(Alignment.Center))
+        }
+        if (error != null) {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(error.orEmpty(), color = Color(0xFFFF6B6B))
+                Spacer(Modifier.height(16.dp))
+                TvButton("返回") { onBack() }
+            }
+        }
+        if (showControls) {
+            // Bottom control bar.
+            Row(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC000000)).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(item.name, color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TvButton(if (player.isPlaying) "暂停" else "播放") {
+                    if (player.isPlaying) player.pause() else player.play()
+                }
+                Spacer(Modifier.width(8.dp))
+                TvButton("+30s") { player.seekTo(player.currentPosition + 30_000) }
+                Spacer(Modifier.width(8.dp))
+                TvButton("-30s") { player.seekTo((player.currentPosition - 30_000).coerceAtLeast(0)) }
+                Spacer(Modifier.width(8.dp))
+                TvButton("倍速 ${SPEEDS[speedIndex]}x") { cycleSpeed() }
+                Spacer(Modifier.width(8.dp))
+                TvButton("音轨") { cycleTrack(C.TRACK_TYPE_AUDIO) }
+                Spacer(Modifier.width(8.dp))
+                TvButton("字幕") { cycleTrack(C.TRACK_TYPE_TEXT) }
+                Spacer(Modifier.width(8.dp))
+                TvButton("返回") { onBack() }
+            }
+        }
+    }
+}
+
+private fun buildPlaybackUrl(itemId: String, source: MediaSource?, startTicks: Long): String? {
+    if (source == null) return null
+    // 优先使用服务器返回的直接流/转码 URL（已含正确的直连/转码判断与起播位置）。
+    source.directStreamUrl?.let { url ->
+        return RetrofitClient.remapAbsoluteMediaUrlToBaseUrl(url)
+    }
+    source.transcodingUrl?.let { url ->
+        return RetrofitClient.remapAbsoluteMediaUrlToBaseUrl(url)
+    }
+    // 兜底：客户端拼接直连 URL。
+    val container = source.container.takeIf { it.isNotBlank() } ?: "mkv"
+    return RetrofitClient.getVideoUrl(itemId, source.id, container, startTicks)
+}
+
+private fun reportStart(item: MediaItem, source: MediaSource?) {
+    val ms = source ?: return
+    val scope = kotlinx.coroutines.MainScope()
+    scope.launch {
+        runCatching {
+            RetrofitClient.getApiService().reportPlaybackStart(buildProgressInfo(item, ms, 0L, "DirectPlay", 0L))
+        }
+    }
+}
+
+private fun reportProgress(item: MediaItem, source: MediaSource, player: Player) {
+    val scope = kotlinx.coroutines.MainScope()
+    scope.launch {
+        runCatching {
+            RetrofitClient.getApiService().reportPlaybackProgress(
+                buildProgressInfo(item, source, player.currentPosition, "DirectPlay", player.duration)
             )
         }
     }
-    return result
+}
+
+private fun reportStopped(item: MediaItem, source: MediaSource?, player: Player) {
+    val ms = source ?: return
+    val scope = kotlinx.coroutines.MainScope()
+    scope.launch {
+        runCatching {
+            RetrofitClient.getApiService().reportPlaybackStopped(
+                buildProgressInfo(item, ms, player.currentPosition, "DirectPlay", player.duration)
+            )
+        }
+    }
+}
+
+private fun buildProgressInfo(
+    item: MediaItem,
+    source: MediaSource,
+    positionMs: Long,
+    playMethod: String,
+    durationMs: Long,
+): PlaybackProgressInfo {
+    return PlaybackProgressInfo(
+        itemId = item.id,
+        positionTicks = positionMs * 10_000L,
+        isPaused = false,
+        playMethod = playMethod,
+        canSeek = true,
+        mediaSourceId = source.id,
+        playSessionId = "",
+        eventName = null,
+        isMuted = false,
+        playbackRate = 1,
+        repeatMode = "RepeatNone",
+        playlistIndex = 0,
+        playlistLength = 1,
+        runTimeTicks = if (durationMs > 0) durationMs * 10_000L else null,
+        nowPlayingQueue = null,
+    )
 }
