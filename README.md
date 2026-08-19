@@ -141,11 +141,14 @@ app/src/main/java/magi/aenerv7/ppembytv/
 
 ## 已知限制
 
-反编译产物里 UI/同步等执行逻辑被 R8 混淆（无 mapping 文件）。以下功能已具备**配置/数据层**，但其**执行算法**无法从混淆层忠实还原，暂未实现：
+反编译产物里 UI/同步等执行逻辑被 R8 混淆（无 mapping 文件），以下功能按**自实现**补齐（不再是逐字复刻）：
 
-- WebDAV 的真正同步执行（上传/下载 sync-config.json）
-- 在线字幕的搜索/下载执行（Assrt API 调用）
-- 字幕字体在播放器的 ASS 增强渲染
+- **WebDAV 同步（自实现）**：设置 → 同步与其它 → 立即上传 / 立即下载；固定使用目录 `PPEmbyTV/` 与文件 `sync-config.json`，同步服务器配置与应用设置（代理 / 图标库 URL / DLNA / 解码器 / Trakt 基础配置 / 剧集与媒体库排序），为手动触发。
+- **ASS 字幕增强渲染（自实现）**：手机扫码上传 ttf/otf 字体后，播放器通过 Media3 SubtitleView（CaptionStyleCompat）应用自定义字体；「播放与字幕设置」中可调整字幕字号与颜色。
+- **在线字幕（Assrt）已完全移除**，不再提供。
+
+未实现：
+- 参考 APK 的 ASS 走 libass 原生位图渲染（native 依赖重），未移植；当前为 Media3 文本字幕增强渲染。
 
 详细进展、踩坑记录与下一步见 [`HANDOFF.md`](HANDOFF.md)。
 

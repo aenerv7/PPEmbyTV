@@ -158,6 +158,7 @@ interface EmbyApiService {
     suspend fun getLatestMedia(
         @Path("userId") userId: String,
         @Query("Limit") limit: Int,
+        @Query("StartIndex") startIndex: Int? = null,
         @Query("Fields") fields: String,
         @Query("ParentId") parentId: String,
     ): Response<List<MediaItem>>
@@ -216,6 +217,7 @@ interface EmbyApiService {
     suspend fun getResumeItems(
         @Path("userId") userId: String,
         @Query("Limit") limit: Int,
+        @Query("StartIndex") startIndex: Int? = null,
         @Query("Filters") filters: String,
         @Query("Recursive") recursive: Boolean,
         @Query("SortBy") sortBy: String,
@@ -237,6 +239,7 @@ interface EmbyApiService {
     suspend fun getResumeItemsV2(
         @Path("userId") userId: String,
         @Query("Limit") limit: Int,
+        @Query("StartIndex") startIndex: Int? = null,
         @Query("Recursive") recursive: Boolean,
         @Query("Fields") fields: String,
         @Query("ImageTypeLimit") imageTypeLimit: Int,

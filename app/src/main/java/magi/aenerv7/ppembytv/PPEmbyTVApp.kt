@@ -14,6 +14,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.util.CoilUtils
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import magi.aenerv7.ppembytv.data.ProxyManager
 import magi.aenerv7.ppembytv.data.ProxySettings
@@ -78,9 +79,10 @@ class PPEmbyTVApp : Application(), ImageLoaderFactory {
         Log.d(TAG, "========== 应用启动：开始加载代理配置 ==========")
         try {
             runBlocking {
-                ProxySettings(this@PPEmbyTVApp).proxyConfigFlow.collect { config ->
-                    ProxyManager.applyProxyConfig(config)
-                }
+                // 注意：必须用 first() 取首个值后结束，不能 collect{}（DataStore 的 data 流
+                // 永不结束，会永久阻塞主线程导致启动黑屏）。与反编译参考实现 FlowKt.first 一致。
+                val config = ProxySettings(this@PPEmbyTVApp).proxyConfigFlow.first()
+                ProxyManager.applyProxyConfig(config)
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ 加载代理配置失败", e)

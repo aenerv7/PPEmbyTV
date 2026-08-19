@@ -1,5 +1,6 @@
 package magi.aenerv7.ppembytv.ui
 
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -13,8 +14,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,10 +28,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,19 +43,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import magi.aenerv7.ppembytv.DlnaPlayRequestData
 import magi.aenerv7.ppembytv.data.DecoderSettings
 import magi.aenerv7.ppembytv.data.IntroOutroSettings
-import magi.aenerv7.ppembytv.data.OnlineSubtitleConfig
-import magi.aenerv7.ppembytv.data.OnlineSubtitleSettings
 import magi.aenerv7.ppembytv.data.ProxyConfig
 import magi.aenerv7.ppembytv.data.ProxyManager
 import magi.aenerv7.ppembytv.data.ProxyProtocol
 import magi.aenerv7.ppembytv.data.ProxySettings
 import magi.aenerv7.ppembytv.data.SubtitleFontEntry
+import magi.aenerv7.ppembytv.data.SubtitleFontManager
 import magi.aenerv7.ppembytv.data.SubtitlePreferences
 import magi.aenerv7.ppembytv.data.TraktSettings
+import magi.aenerv7.ppembytv.data.WebDavSyncManager
 import magi.aenerv7.ppembytv.data.WebDavSyncSettings
 import magi.aenerv7.ppembytv.data.api.IqiyiSuggestApi
 import magi.aenerv7.ppembytv.data.api.IqiyiSuggestItem
@@ -70,7 +78,6 @@ import magi.aenerv7.ppembytv.dlna.DlnaConfig
 import magi.aenerv7.ppembytv.dlna.DlnaSettings
 import magi.aenerv7.ppembytv.server.BackupRouteConfigServerManager
 import magi.aenerv7.ppembytv.server.ConfigServerManager
-import magi.aenerv7.ppembytv.server.OnlineSubtitleConfigServerManager
 import magi.aenerv7.ppembytv.server.ServerIconLibraryInputServerManager
 import magi.aenerv7.ppembytv.server.SubtitleFontUploadServerManager
 import magi.aenerv7.ppembytv.server.WebDavSyncConfigServerManager
@@ -406,6 +413,10 @@ private fun LoginScreen(
 }
 
 // ===== Home =====
+private const val HOME_PAGE_SIZE = 20
+private const val HOME_FIELDS =
+    "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,PremiereDate,SeriesName,ParentIndexNumber,IndexNumber,SeriesId"
+
 @Composable
 private fun HomeScreen(
     server: ServerConfig?,
@@ -418,6 +429,43 @@ private fun HomeScreen(
     val libraries = remember { mutableStateOf<List<Library>>(emptyList()) }
     val resumeItems = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     val latestItems = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+    val resumeTotal = remember { mutableIntStateOf(0) }
+    val latestTotal = remember { mutableIntStateOf(0) }
+    val resumeListState = rememberLazyListState()
+    val latestListState = rememberLazyListState()
+
+    suspend fun fetchResumePage(startIndex: Int) {
+        val s = server ?: return
+        val api = RetrofitClient.getApiService()
+        val userId = RetrofitClient.getUserId()
+        runCatching {
+            api.getResumeItemsV2(userId, HOME_PAGE_SIZE, startIndex, true, HOME_FIELDS, 1, "Primary,Backdrop,Thumb", "Video").body()
+        }.onSuccess { qr ->
+            if (qr == null) return@onSuccess
+            val items = qr.items ?: emptyList()
+            resumeItems.value = if (startIndex == 0) items else (resumeItems.value + items).distinctBy { it.id }
+            resumeTotal.intValue = qr.totalRecordCount
+            Log.d("HomeScreen", "继续观看分页加载: startIndex=$startIndex, 返回${items.size}项, 总数${qr.totalRecordCount}")
+        }
+    }
+
+    suspend fun fetchLatestPage(startIndex: Int) {
+        val s = server ?: return
+        val api = RetrofitClient.getApiService()
+        val userId = RetrofitClient.getUserId()
+        runCatching {
+            api.getItems(
+                userId, "", "DateCreated", "Descending", HOME_FIELDS,
+                true, "Movie,Episode,Series,Video", "Primary,Backdrop,Thumb", "", HOME_PAGE_SIZE, startIndex,
+            ).body()
+        }.onSuccess { qr ->
+            if (qr == null) return@onSuccess
+            val items = qr.items ?: emptyList()
+            latestItems.value = if (startIndex == 0) items else (latestItems.value + items).distinctBy { it.id }
+            latestTotal.intValue = qr.totalRecordCount
+            Log.d("HomeScreen", "最新媒体分页加载: startIndex=$startIndex, 返回${items.size}项, 总数${qr.totalRecordCount}")
+        }
+    }
 
     LaunchedEffect(server) {
         val s = server ?: return@LaunchedEffect
@@ -425,10 +473,30 @@ private fun HomeScreen(
         val userId = RetrofitClient.getUserId()
         runCatching { api.getLibraries(userId, "ItemCounts,PrimaryImageAspectRatio").body()?.items ?: emptyList() }
             .onSuccess { libraries.value = it }
-        runCatching { api.getResumeItems(userId, 30, "IsResumable", true, "DatePlayed", "Descending", "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,PremiereDate,SeriesName,ParentIndexNumber,IndexNumber,SeriesId").body()?.items ?: emptyList() }
-            .onSuccess { resumeItems.value = it }
-        runCatching { api.getLatestMedia(userId, 30, "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,PremiereDate,SeriesName,ParentIndexNumber,IndexNumber", "").body() ?: emptyList() }
-            .onSuccess { latestItems.value = it }
+        fetchResumePage(0)
+        fetchLatestPage(0)
+    }
+
+    // 继续观看：滚动接近末尾时加载下一页（与参考 APK 首页分页行为一致）
+    LaunchedEffect(resumeItems.value.size) {
+        snapshotFlow { resumeListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisible ->
+                if (lastVisible >= resumeItems.value.size - 4 && resumeItems.value.size < resumeTotal.intValue) {
+                    fetchResumePage(resumeItems.value.size)
+                }
+            }
+    }
+
+    // 最新媒体：同上
+    LaunchedEffect(latestItems.value.size) {
+        snapshotFlow { latestListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisible ->
+                if (lastVisible >= latestItems.value.size - 4 && latestItems.value.size < latestTotal.intValue) {
+                    fetchLatestPage(latestItems.value.size)
+                }
+            }
     }
 
     Column(Modifier.fillMaxSize().padding(24.dp)) {
@@ -449,12 +517,12 @@ private fun HomeScreen(
         Spacer(Modifier.height(24.dp))
         if (resumeItems.value.isNotEmpty()) {
             SectionTitle("继续观看")
-            ItemRow(resumeItems.value, onOpenDetail)
+            ItemRow(resumeItems.value, resumeListState, onOpenDetail)
         }
         Spacer(Modifier.height(24.dp))
         if (latestItems.value.isNotEmpty()) {
             SectionTitle("最新媒体")
-            ItemRow(latestItems.value, onOpenDetail)
+            ItemRow(latestItems.value, latestListState, onOpenDetail)
         }
     }
 }
@@ -466,8 +534,8 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun ItemRow(items: List<MediaItem>, onOpenDetail: (String) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun ItemRow(items: List<MediaItem>, listState: LazyListState, onOpenDetail: (String) -> Unit) {
+    LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(items) { item ->
             PosterCard(
                 title = item.name,
@@ -480,6 +548,8 @@ private fun ItemRow(items: List<MediaItem>, onOpenDetail: (String) -> Unit) {
 }
 
 // ===== Library =====
+private const val LIBRARY_PAGE_SIZE = 50
+
 @Composable
 private fun LibraryScreen(
     server: ServerConfig?,
@@ -489,24 +559,47 @@ private fun LibraryScreen(
     onBack: () -> Unit,
 ) {
     val itemsState = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
-    LaunchedEffect(server, libraryId) {
-        val s = server ?: return@LaunchedEffect
+    val totalCount = remember { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+
+    suspend fun fetchPage(startIndex: Int) {
+        val s = server ?: return
         val api = RetrofitClient.getApiService()
         runCatching {
             api.getItems(
                 RetrofitClient.getUserId(), libraryId, "SortName", "Ascending",
                 "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,PremiereDate,SeriesName,ParentIndexNumber,IndexNumber,SeriesId",
-                false, "", "Primary,Backdrop,Thumb", "", null, null,
-            ).body()?.items ?: emptyList()
-        }.onSuccess { itemsState.value = it }
+                false, "", "Primary,Backdrop,Thumb", "", LIBRARY_PAGE_SIZE, startIndex,
+            ).body()
+        }.onSuccess { qr ->
+            if (qr == null) return@onSuccess
+            val items = qr.items ?: emptyList()
+            itemsState.value = if (startIndex == 0) items else (itemsState.value + items).distinctBy { it.id }
+            totalCount.intValue = qr.totalRecordCount
+            Log.d("LibraryScreen", "媒体库分页加载: startIndex=$startIndex, 返回${items.size}项, 总数${qr.totalRecordCount}")
+        }
     }
+
+    LaunchedEffect(server, libraryId) { fetchPage(0) }
+
+    // 滚动接近末尾时加载下一页
+    LaunchedEffect(itemsState.value.size) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisible ->
+                if (lastVisible >= itemsState.value.size - 6 && itemsState.value.size < totalCount.intValue) {
+                    fetchPage(itemsState.value.size)
+                }
+            }
+    }
+
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(libraryName, color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             TvButton("返回") { onBack() }
         }
         Spacer(Modifier.height(16.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(itemsState.value) { item ->
                 Row(
                     Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(12.dp),
@@ -698,6 +791,7 @@ private fun SearchScreen(
     var query by remember { mutableStateOf("") }
     val results = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     val suggestions = remember { mutableStateOf<List<IqiyiSuggestItem>>(emptyList()) }
+    val resultsListState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
     fun doSearch() {
@@ -727,7 +821,7 @@ private fun SearchScreen(
         Spacer(Modifier.height(16.dp))
         if (results.value.isNotEmpty()) {
             SectionTitle("媒体库结果")
-            ItemRow(results.value, onOpenDetail)
+            ItemRow(results.value, resultsListState, onOpenDetail)
             Spacer(Modifier.height(16.dp))
         }
         if (suggestions.value.isNotEmpty()) {
@@ -773,7 +867,6 @@ private fun SettingsScreen(
         "sync" -> SyncSettingsPage(server, serverPrefs, onBack = { page = "main" }, onOpenQr = { page = it })
         "qr_backup" -> QrBackupRoutesOverlay(server, serverPrefs, onBack = { page = "sync" })
         "qr_icon" -> QrIconLibraryOverlay(onBack = { page = "sync" })
-        "qr_subtitle" -> QrOnlineSubtitleOverlay(onBack = { page = "sync" })
         "qr_webdav" -> QrWebDavOverlay(onBack = { page = "sync" })
         "qr_font" -> QrSubtitleFontOverlay(onBack = { page = "sync" })
         "trakt" -> TraktSettingsPage(onBack = { page = "main" })
@@ -1044,8 +1137,11 @@ private fun PlaybackSettingsPage(onBack: () -> Unit) {
     var subtitlesEnabled by remember { mutableStateOf(subtitlePrefs.isSubtitlesEnabled()) }
     var brightnessEnabled by remember { mutableStateOf(subtitlePrefs.isBitmapSubtitleBrightnessEnabled()) }
     var brightness by remember { mutableStateOf(subtitlePrefs.getBitmapSubtitleBrightness()) }
+    var fontScale by remember { mutableStateOf(subtitlePrefs.getSubtitleFontScale()) }
+    var fontColor by remember { mutableStateOf(subtitlePrefs.getSubtitleFontColor()) }
+    var selectedFont by remember { mutableStateOf(SubtitleFontManager(context).getSelectedFont()?.name) }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
+    Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("播放与字幕设置", color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             TvButton("返回") { onBack() }
@@ -1085,6 +1181,36 @@ private fun PlaybackSettingsPage(onBack: () -> Unit) {
                 subtitlePrefs.saveBitmapSubtitleBrightness(brightness)
             }
         }
+        Spacer(Modifier.height(8.dp))
+        Text("ASS 字幕增强", color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("字幕字号: ${(fontScale * 100).toInt()}%", color = Color.White, modifier = Modifier.weight(1f))
+            TvButton("-") {
+                fontScale = (fontScale - 0.1f).coerceAtLeast(SubtitlePreferences.SUBTITLE_FONT_SCALE_MIN)
+                subtitlePrefs.saveSubtitleFontScale(fontScale)
+            }
+            Spacer(Modifier.width(8.dp))
+            TvButton("+") {
+                fontScale = (fontScale + 0.1f).coerceAtMost(SubtitlePreferences.SUBTITLE_FONT_SCALE_MAX)
+                subtitlePrefs.saveSubtitleFontScale(fontScale)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("字幕颜色: ${fontColor.displayName}", color = Color.White, modifier = Modifier.weight(1f))
+            TvButton("换色") {
+                val next = SubtitlePreferences.SubtitleColor.entries[(fontColor.ordinal + 1) % SubtitlePreferences.SubtitleColor.entries.size]
+                fontColor = next
+                subtitlePrefs.saveSubtitleFontColor(next)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("字幕字体: ${selectedFont ?: "默认"}", color = Color.White, modifier = Modifier.weight(1f))
+            TvButton("清除") {
+                SubtitleFontManager(context).clearSelectedFont()
+                selectedFont = null
+            }
+        }
     }
 }
 
@@ -1107,7 +1233,14 @@ private fun SyncSettingsPage(
     onBack: () -> Unit,
     onOpenQr: (String) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
+    val context = LocalContext.current.applicationContext
+    val webDavSettings = remember { WebDavSyncSettings(context) }
+    val webDavManager = remember { WebDavSyncManager(context) }
+    val scope = rememberCoroutineScope()
+    var webDavStatus by remember { mutableStateOf<String?>(null) }
+    var syncing by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("同步与其它", color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             TvButton("返回") { onBack() }
@@ -1117,11 +1250,56 @@ private fun SyncSettingsPage(
         Spacer(Modifier.height(8.dp))
         TvButton("服务器图标库") { onOpenQr("qr_icon") }
         Spacer(Modifier.height(8.dp))
-        TvButton("在线字幕配置") { onOpenQr("qr_subtitle") }
-        Spacer(Modifier.height(8.dp))
-        TvButton("WebDAV 同步") { onOpenQr("qr_webdav") }
+        TvButton("WebDAV 配置") { onOpenQr("qr_webdav") }
         Spacer(Modifier.height(8.dp))
         TvButton("字幕字体上传") { onOpenQr("qr_font") }
+
+        Spacer(Modifier.height(24.dp))
+        Text("WebDAV 同步", color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        val wdConfig = webDavSettings.load()
+        Text(
+            if (wdConfig.serverUrl.isBlank()) {
+                "未配置 WebDAV 服务器，请先扫码配置"
+            } else {
+                "服务器: ${wdConfig.serverUrl}（同步服务器: ${if (wdConfig.syncServerConfigurations) "开" else "关"}，同步设置: ${if (wdConfig.syncAppSettings) "开" else "关"}）"
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TvButton("立即上传") {
+                if (!syncing) {
+                    syncing = true
+                    webDavStatus = null
+                    scope.launch {
+                        webDavStatus = runCatching { webDavManager.uploadSync(webDavSettings.load()) }
+                            .fold({ it }, { "上传失败: ${it.message}" })
+                        syncing = false
+                    }
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            TvButton("立即下载") {
+                if (!syncing) {
+                    syncing = true
+                    webDavStatus = null
+                    scope.launch {
+                        webDavStatus = runCatching { webDavManager.downloadSync(webDavSettings.load()) }
+                            .fold({ it }, { "下载失败: ${it.message}" })
+                        syncing = false
+                    }
+                }
+            }
+        }
+        if (syncing) {
+            Spacer(Modifier.height(8.dp))
+            Text("同步中...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        webDavStatus?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = Color.White)
+        }
     }
 }
 
@@ -1172,24 +1350,6 @@ private fun QrIconLibraryOverlay(onBack: () -> Unit) {
 }
 
 @Composable
-private fun QrOnlineSubtitleOverlay(onBack: () -> Unit) {
-    val context = LocalContext.current.applicationContext
-    val manager = remember { OnlineSubtitleConfigServerManager(context) }
-    val settings = remember { OnlineSubtitleSettings(context) }
-    QrServerOverlay(
-        title = "在线字幕配置",
-        description = "手机扫码后可配置 Assrt 在线字幕 API",
-        start = {
-            manager.startServer(initialConfig = settings.load()) { config ->
-                settings.save(config)
-            }
-        },
-        stop = { manager.stopServer() },
-        onBack = onBack,
-    )
-}
-
-@Composable
 private fun QrWebDavOverlay(onBack: () -> Unit) {
     val context = LocalContext.current.applicationContext
     val manager = remember { WebDavSyncConfigServerManager(context) }
@@ -1211,12 +1371,14 @@ private fun QrWebDavOverlay(onBack: () -> Unit) {
 private fun QrSubtitleFontOverlay(onBack: () -> Unit) {
     val context = LocalContext.current.applicationContext
     val manager = remember { SubtitleFontUploadServerManager(context) }
+    val fontManager = remember { SubtitleFontManager(context) }
     var uploadedName by remember { mutableStateOf<String?>(null) }
     QrServerOverlay(
         title = "字幕字体上传",
-        description = if (uploadedName != null) "已上传字体: $uploadedName" else "手机扫码后可上传 ASS 字幕字体",
+        description = if (uploadedName != null) "已上传字体: $uploadedName" else "手机扫码后可上传 ASS 字幕字体（ttf/otf）",
         start = {
             manager.startServer { entry: SubtitleFontEntry ->
+                fontManager.addFont(entry)
                 uploadedName = entry.name
             }
         },

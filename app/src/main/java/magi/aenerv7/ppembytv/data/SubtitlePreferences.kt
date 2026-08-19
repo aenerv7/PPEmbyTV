@@ -53,6 +53,14 @@ class SubtitlePreferences(context: Context) {
     fun getBitmapSubtitleBrightness(): Int =
         normalizeBitmapSubtitleBrightness(prefs.getInt(KEY_BITMAP_SUBTITLE_BRIGHTNESS, BITMAP_SUBTITLE_BRIGHTNESS_DEFAULT))
 
+    /** 全局字幕字号倍率（相对 Media3 默认字号）。 */
+    fun getSubtitleFontScale(): Float =
+        prefs.getFloat(KEY_SUBTITLE_FONT_SCALE, 1.0f).coerceIn(SUBTITLE_FONT_SCALE_MIN, SUBTITLE_FONT_SCALE_MAX)
+
+    /** 全局字幕颜色（ASS 增强渲染；未带颜色标签的文字使用该颜色）。 */
+    fun getSubtitleFontColor(): SubtitleColor =
+        SubtitleColor.fromOrdinal(prefs.getInt(KEY_SUBTITLE_FONT_COLOR, SubtitleColor.WHITE.ordinal))
+
     fun getMovieDisplaySettings(itemId: String, mediaSourceId: String, trackIndex: Int): SubtitleDisplaySettings {
         val pref = getMovieSubtitlePref(itemId, mediaSourceId) ?: return SubtitleDisplaySettings()
         val settings = pref.trackSettings[trackIndex]
@@ -89,6 +97,16 @@ class SubtitlePreferences(context: Context) {
         val brightness = normalizeBitmapSubtitleBrightness(value)
         prefs.edit().putInt(KEY_BITMAP_SUBTITLE_BRIGHTNESS, brightness).apply()
         Log.d(TAG, "保存全局图形字幕亮度: brightness=" + brightness)
+    }
+
+    fun saveSubtitleFontScale(scale: Float) {
+        prefs.edit().putFloat(KEY_SUBTITLE_FONT_SCALE, scale.coerceIn(SUBTITLE_FONT_SCALE_MIN, SUBTITLE_FONT_SCALE_MAX)).apply()
+        Log.d(TAG, "保存全局字幕字号: scale=" + scale)
+    }
+
+    fun saveSubtitleFontColor(color: SubtitleColor) {
+        prefs.edit().putInt(KEY_SUBTITLE_FONT_COLOR, color.ordinal).apply()
+        Log.d(TAG, "保存全局字幕颜色: color=" + color.displayName)
     }
 
     fun saveBitmapSubtitleBrightnessEnabled(enabled: Boolean) {
@@ -297,6 +315,8 @@ class SubtitlePreferences(context: Context) {
         const val BITMAP_SUBTITLE_BRIGHTNESS_MAX = 100
         const val BITMAP_SUBTITLE_BRIGHTNESS_MIN = 5
         const val BITMAP_SUBTITLE_BRIGHTNESS_STEP = 5
+        const val SUBTITLE_FONT_SCALE_MIN = 0.6f
+        const val SUBTITLE_FONT_SCALE_MAX = 2.0f
 
         /** Normalizes into 5..100, rounded down to a multiple of 5; non-positive -> default. */
         fun normalizeBitmapSubtitleBrightness(value: Int): Int {
@@ -311,6 +331,8 @@ class SubtitlePreferences(context: Context) {
         private const val KEY_MOVIE_PREFS = "movie_subtitle_prefs_v2"
         private const val KEY_SERIES_PREFS = "series_subtitle_prefs_v2"
         private const val KEY_SUBTITLES_ENABLED = "subtitles_enabled"
+        private const val KEY_SUBTITLE_FONT_SCALE = "subtitle_font_scale"
+        private const val KEY_SUBTITLE_FONT_COLOR = "subtitle_font_color"
         private const val MAX_MOVIE_CACHE = 100
         private const val MAX_SERIES_CACHE = 100
         private const val PREFS_NAME = "subtitle_preferences"

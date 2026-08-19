@@ -100,6 +100,22 @@ class ServerPreferences(context: Context) {
         persistServerOrder(buildStoredOrderWithAllServerIds(orderedServerIds, allIds))
     }
 
+    /**
+     * 整体替换服务器列表（WebDAV 下载同步用）；可选设置最后使用服务器。
+     * 显式排序被清除（会按最后登录时间重排）。
+     */
+    fun replaceAllServers(servers: List<ServerConfig>, lastUsedServerId: String?) {
+        val editor = prefs.edit()
+        editor.putString(KEY_SERVERS, gson.toJson(servers))
+        if (lastUsedServerId != null) {
+            editor.putString(KEY_LAST_USED_SERVER, lastUsedServerId)
+        } else {
+            editor.remove(KEY_LAST_USED_SERVER)
+        }
+        editor.remove(KEY_SERVER_ORDER)
+        editor.apply()
+    }
+
     fun setLastUsedServerId(serverId: String) {
         prefs.edit().putString(KEY_LAST_USED_SERVER, serverId).apply()
     }

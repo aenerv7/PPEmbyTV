@@ -123,17 +123,52 @@ D-pad 中心键是 **`Key.DirectionCenter`**（不是 `Key.DpadCenter`，Compose
 ### 5.7 曾发生的误删
 第一轮曾 `Remove-Item` 整个源码树导致刚移植完的 Trakt/Iqiyi（33 个文件）被误删，后已重新移植补齐。**新会话若再动源码树，注意别覆盖已生成的文件。**
 
+### 5.8 DataStore 流在 `runBlocking` 里不能 `collect`（真机黑屏根因）
+`PPEmbyTVApp.onCreate` 里加载代理配置时曾写成：
+
+```kotlin
+runBlocking { ProxySettings(this).proxyConfigFlow.collect { ... } }   // ❌ 主线程永久阻塞
+```
+
+DataStore 的 `data` 流**永不结束**（每次写入都会继续发值），`collect` 不会返回，
+`runBlocking` 把主线程卡死在 `Application.onCreate`，Activity 永远无法创建，
+窗口只有主题的黑色背景 → **真机安装后打开就是黑屏**（不崩溃、无日志、进程常驻）。
+
+参考 APK 反编译实现用的是 `FlowKt.first(flow, this)`（`defpackage/o2.java` case 5），
+已改回 `proxyConfigFlow.first()`（与 `DlnaSettings.configSync` 的写法一致）。
+
+### 5.9 播放 URL：服务器返回的相对路径必须拼上基址（真机/模拟器无法播放）
+PlaybackInfo 的 `DirectStreamUrl` 可能是**相对路径**（如 `/videos/{id}/original.mp4?…`，
+无 scheme/host）。原 `remapAbsoluteMediaUrlToBaseUrl` 对无 scheme 的 URL 会 `toHttpUrlOrNull()`
+返回 null → 原样返回 → Media3 当成本地文件路径 → `FileNotFoundException: /videos/...`（ENOENT）。
+已修复：相对路径按基址 origin 补齐，并补 `/emby` 前缀（与参考 `defpackage/cq1.p` 的兜底逻辑一致）。
+修复后用真实服务器验证：`https://emby.bangumi.ca/emby/videos/241448/original.mp4?…` → 200 video/mp4。
+
+### 5.10 首页/媒体库分页（对齐参考 APK 行为）
+- 原首页每个栏目一次性加载固定 30 条、**无右移加载更多**；参考 APK 是每页 8 条、滚动到末尾自动
+  `startIndex+8` 续载（实测 `16→24→32→40` 直到总数 45）。
+- 已实现：`HomeScreen` 的「继续观看/最新媒体」与 `LibraryScreen` 均按 `LazyListState` +
+  `snapshotFlow` 检测滚动近末尾 → 追加下一页（`HOME_PAGE_SIZE=20`、`LIBRARY_PAGE_SIZE=50`）。
+  ⚠️ 注意：`LaunchedEffect` 必须以 `items.size` 为键 + `snapshotFlow{visibleItemsInfo…}` 观察滚动，
+  只把 `listState` 当 key 不会在滚动时重新触发。
+- **续播端点坑**：`Users/{userId}/Items?Filters=IsResumable` 在该服务器返回 0；正确端点是
+  `Users/{userId}/Items/Resume`（`getResumeItemsV2`，实测返回 31 条）。首页已改用 V2。
+
 ---
 
-## 6. 残余未完成（明确边界）
+## 6. 残余未完成与自实现进展
 
-以下**执行算法在 R8 混淆的 `defpackage` 层、无 mapping 文件，无法忠实还原**（其配置/数据/server 层均已就绪）：
+原「三块执行算法在 R8 混淆层、无 mapping 文件、无法忠实还原」的功能已在本会话处理完毕：
 
-1. **WebDAV 真正同步执行**（上传/下载 sync-config.json；`WebDavSyncConfig` + `WebDavSyncConfigServerManager` 已就绪，缺同步逻辑）。
-2. **在线字幕搜索/下载执行**（Assrt API 调用；`OnlineSubtitleConfig` + `OnlineSubtitleConfigServerManager` 已就绪）。
-3. **字幕字体在播放器的 ASS 增强渲染**（`SubtitleFontEntry` + `SubtitleFontUploadServerManager` 已就绪，缺渲染）。
+1. ✅ **WebDAV 真正同步执行（自实现）**：`data/WebDavSyncClient.kt`（OkHttp **MKCOL / PROPFIND / PUT / GET**，固定目录 `PPEmbyTV/`、文件 `sync-config.json`）+ `data/WebDavSyncManager.kt`（payload 构建/应用：服务器列表/最后使用服务器 + 代理/图标库/DLNA/解码器/Trakt 基础配置/剧集与媒体库排序）。同步为**手动**（设置 → 同步与其它 → 立即上传/立即下载）——与参考 APK 行为一致（参考实现同样是纯手动按钮触发，无启动自动同步、无定时器）。已用**真实坚果云 WebDAV** 端到端验证：上传（MKCOL 201 + PUT 1203B）、下载（GET + 回写偏好）。
+2. ✅ **在线字幕（Assrt）完全移除**：删除 `data/OnlineSubtitleConfig.kt`、`data/OnlineSubtitleSettings.kt`、`data/AssrtApiProtocol.kt`、`server/OnlineSubtitleConfigServer.kt`、`server/OnlineSubtitleConfigServerManager.kt`、`server/OnlineSubtitleSearchInputServerManager.kt`，并清理 AppRoot 的 UI 入口（「在线字幕配置」按钮/QrOnlineSubtitleOverlay/相关 import）。
+3. ✅ **字幕字体 ASS 增强渲染（自实现）**：`data/SubtitleFontManager.kt`（字体列表 + 选中项持久化，上传后自动生效）；播放器用 Media3 `SubtitleView.setStyle(CaptionStyleCompat(…, typeface))` 应用上传字体——与参考 APK 是**同一机制**（已核对 media3-ui 1.5.1 字节码：SubtitlePainter 会把 CaptionStyleCompat.typeface 设到 TextPaint）；另新增全局字幕字号/颜色偏好与「播放与字幕设置」UI（播放与字幕/同步页已加滚动）。
 
-这三项若要补，属于「自实现」（WebDAV 用 okhttp PUT/PROPFIND、在线字幕用 Assrt 公开 API、ASS 用 Media3 外挂字幕），不再是逐字复刻。
+剩余边界（自实现范围内未做）：
+- 参考 APK 的 ASS 增强走 **libass 原生位图渲染**（peerless2012 的 `io.github.peerless2012:ass`，native 依赖重，未引入）。我们改用 Media3 内置 ASS/SSA 解析 + 自定义字体/颜色/字号增强。
+- WebDAV payload 与参考实现（`ChaiChaiEmby/` 目录、danmaku/onlineSubtitle 等字段）不完全一致——本应用使用 `PPEmbyTV/` 目录与自己的 schema（弹幕与在线字幕已移除）。
+
+> 参考 APK（v0.3.1-alpha2 arm64，`.tools/apk/`，jadx 输出 `.tools/apk-new-decompiled/`）核对结论：WebDAV 客户端在 `defpackage.tg2`（PROPFIND 探目录→404 时 MKCOL→GET 下载→PUT 上传，纯手动）；字体应用在 `defpackage.no1`/`mk1`（CaptionStyleCompat typeface + Cue TypefaceSpan）；在线字幕为 defpackage ff/ef/xe/ye/we + server 层。
 
 ---
 

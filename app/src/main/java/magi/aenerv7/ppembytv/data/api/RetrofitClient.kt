@@ -416,10 +416,29 @@ object RetrofitClient {
 
     fun remapAbsoluteMediaUrlToBaseUrl(rawUrl: String): String {
         val base = baseUrl.toHttpUrlOrNull() ?: return rawUrl
-        val target = rawUrl.toHttpUrlOrNull() ?: return rawUrl
+        val isAbsolute = rawUrl.startsWith("http://") || rawUrl.startsWith("https://")
+        val target = if (isAbsolute) {
+            rawUrl.toHttpUrlOrNull() ?: return rawUrl
+        } else {
+            // 服务器可能返回相对路径（如 /videos/{id}/original.mp4?…），以基址的 scheme://host:port 补齐
+            val pathAndQuery = if (rawUrl.startsWith("/")) rawUrl else "/$rawUrl"
+            val path = pathAndQuery.substringBefore('?')
+            val query = pathAndQuery.substringAfter('?', "").ifEmpty { null }
+            base.newBuilder().encodedPath(path).encodedQuery(query).build()
+        }
         val basePath = base.encodedPath.trimEnd('/')
         if (basePath.isBlank()) {
-            return rawUrl
+            // 基址无子路径：绝对 URL 保持原样；相对 URL 需补 /emby 前缀（与参考实现 cq1.p 一致）
+            if (isAbsolute) {
+                return rawUrl
+            }
+            val p = target.encodedPath
+            val prefixed = if (!p.equals("/emby", true) && !p.startsWith("/emby/", true)) "/emby$p" else p
+            return base.newBuilder()
+                .encodedPath(prefixed)
+                .encodedQuery(target.encodedQuery)
+                .build()
+                .toString()
         }
         var encodedPath = target.encodedPath
         if (!encodedPath.equals("/emby", true) && !encodedPath.startsWith("/emby/", true) &&

@@ -1,5 +1,6 @@
 package magi.aenerv7.ppembytv.ui.player
 
+import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,9 +33,13 @@ import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import magi.aenerv7.ppembytv.data.SubtitleFontManager
+import magi.aenerv7.ppembytv.data.SubtitlePreferences
 import magi.aenerv7.ppembytv.data.api.PlaybackProgressInfo
 import magi.aenerv7.ppembytv.data.api.RetrofitClient
 import magi.aenerv7.ppembytv.data.model.MediaItem
@@ -59,6 +64,8 @@ fun PlayerScreen(
             setHandleAudioBecomingNoisy(true)
         }
     }
+    val fontManager = remember { SubtitleFontManager(context) }
+    val subtitlePrefs = remember { SubtitlePreferences(context) }
     var mediaSource by remember { mutableStateOf<MediaSource?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -156,7 +163,12 @@ fun PlayerScreen(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (mediaSource != null) {
             AndroidView(
-                factory = { ctx -> PlayerView(ctx).apply { this.player = player } },
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        this.player = player
+                        subtitleView?.let { applySubtitleEnhancement(it, fontManager, subtitlePrefs) }
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -195,6 +207,33 @@ fun PlayerScreen(
             }
         }
     }
+}
+
+/**
+ * ASS 增强渲染：把上传的自定义字幕字体、全局字幕字号/颜色应用到 Media3 的 SubtitleView。
+ * - [SubtitleView.setApplyEmbeddedStyles]/[SubtitleView.setApplyEmbeddedFontSizes]：保留 ASS 内置样式与字号标签
+ * - CaptionStyleCompat.typeface：Media3 的 SubtitlePainter 会把它设到 TextPaint 上（已核对 media3-ui 1.5.1 字节码）
+ * - 未带颜色标签的字幕文字使用用户选择的颜色；字号按倍率整体缩放
+ */
+private fun applySubtitleEnhancement(
+    subtitleView: SubtitleView,
+    fontManager: SubtitleFontManager,
+    subtitlePrefs: SubtitlePreferences,
+) {
+    subtitleView.setApplyEmbeddedStyles(true)
+    subtitleView.setApplyEmbeddedFontSizes(true)
+    val typeface = fontManager.selectedTypeface()
+    val color = subtitlePrefs.getSubtitleFontColor()
+    val style = CaptionStyleCompat(
+        color.colorValue,
+        AndroidColor.TRANSPARENT,
+        AndroidColor.TRANSPARENT,
+        CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+        AndroidColor.BLACK,
+        typeface,
+    )
+    subtitleView.setStyle(style)
+    subtitleView.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitlePrefs.getSubtitleFontScale())
 }
 
 private fun buildPlaybackUrl(itemId: String, source: MediaSource?, startTicks: Long): String? {
