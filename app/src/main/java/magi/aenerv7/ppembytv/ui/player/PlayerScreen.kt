@@ -3,6 +3,7 @@
 package magi.aenerv7.ppembytv.ui.player
 
 import android.graphics.Color as AndroidColor
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -92,6 +93,8 @@ fun PlayerScreen(
     server: ServerConfig?,
     item: MediaItem,
     mediaSourceId: String?,
+    audioStreamIndex: Int? = null,
+    subtitleStreamIndex: Int? = null,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -122,7 +125,7 @@ fun PlayerScreen(
     }
 
     // Fetch playback info and prepare the player.
-    LaunchedEffect(item.id, mediaSourceId) {
+    LaunchedEffect(item.id, mediaSourceId, audioStreamIndex, subtitleStreamIndex) {
         val s = server ?: return@LaunchedEffect
         val api = RetrofitClient.getApiService()
         val userId = RetrofitClient.getUserId()
@@ -131,8 +134,8 @@ fun PlayerScreen(
                 deviceProfile = createAndroidTvDeviceProfile(),
                 mediaSourceId = mediaSourceId,
                 startTimeTicks = startTicks,
-                audioStreamIndex = null,
-                subtitleStreamIndex = null,
+                audioStreamIndex = audioStreamIndex,
+                subtitleStreamIndex = subtitleStreamIndex?.takeIf { it >= 0 },
                 maxStreamingBitrate = null,
                 enableDirectPlay = true,
                 enableDirectStream = true,
@@ -145,6 +148,10 @@ fun PlayerScreen(
                 mediaSource = selected
                 val url = buildPlaybackUrl(item.id, selected, startTicks)
                 if (url != null) {
+                    Log.d(
+                        "PlayerScreen",
+                        "详情页播放选择: source=${selected?.id}, audio=$audioStreamIndex, subtitle=$subtitleStreamIndex",
+                    )
                     player.setMediaItem(Media3Item.fromUri(url))
                     player.prepare()
                     player.play()
@@ -159,6 +166,17 @@ fun PlayerScreen(
             error = "播放失败: ${e.message}"
         } finally {
             isLoading = false
+        }
+    }
+
+    LaunchedEffect(mediaSource?.id, audioStreamIndex, subtitleStreamIndex) {
+        val selectedSource = mediaSource ?: return@LaunchedEffect
+        repeat(50) {
+            if (player.currentTracks.groups.isNotEmpty()) {
+                applyDetailTrackSelection(player, selectedSource, audioStreamIndex, subtitleStreamIndex)
+                return@LaunchedEffect
+            }
+            delay(100)
         }
     }
 
@@ -399,6 +417,55 @@ fun PlayerScreen(
             }
         }
     }
+}
+
+private fun applyDetailTrackSelection(
+    player: ExoPlayer,
+    source: MediaSource,
+    audioStreamIndex: Int?,
+    subtitleStreamIndex: Int?,
+) {
+    val builder = player.trackSelectionParameters.buildUpon()
+    audioStreamIndex?.let { streamIndex ->
+        findTrackOverride(player, source, streamIndex, C.TRACK_TYPE_AUDIO)?.let { override ->
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            builder.setOverrideForType(override)
+        }
+    }
+    when {
+        subtitleStreamIndex == null -> Unit
+        subtitleStreamIndex < 0 -> {
+            builder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        }
+        else -> {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            findTrackOverride(player, source, subtitleStreamIndex, C.TRACK_TYPE_TEXT)?.let { override ->
+                builder.setOverrideForType(override)
+            }
+        }
+    }
+    player.trackSelectionParameters = builder.build()
+}
+
+private fun findTrackOverride(
+    player: ExoPlayer,
+    source: MediaSource,
+    streamIndex: Int,
+    trackType: Int,
+): TrackSelectionOverride? {
+    val apiType = if (trackType == C.TRACK_TYPE_AUDIO) "Audio" else "Subtitle"
+    var ordinal = source.mediaStreams.orEmpty()
+        .filter { it.type == apiType }
+        .indexOfFirst { it.index == streamIndex }
+    if (ordinal < 0) return null
+
+    for (group in player.currentTracks.groups.filter { it.type == trackType }) {
+        val trackGroup = group.mediaTrackGroup
+        if (ordinal < trackGroup.length) return TrackSelectionOverride(trackGroup, ordinal)
+        ordinal -= trackGroup.length
+    }
+    return null
 }
 
 @Composable

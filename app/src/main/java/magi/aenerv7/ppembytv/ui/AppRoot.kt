@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -34,7 +36,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Movie
@@ -65,7 +66,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -78,6 +81,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import kotlin.math.max
 import kotlinx.coroutines.delay
@@ -102,6 +107,7 @@ import magi.aenerv7.ppembytv.data.model.AuthenticationResult
 import magi.aenerv7.ppembytv.data.model.BackupRouteConfig
 import magi.aenerv7.ppembytv.data.model.Library
 import magi.aenerv7.ppembytv.data.model.MediaItem
+import magi.aenerv7.ppembytv.data.model.MediaStream
 import magi.aenerv7.ppembytv.data.model.QueryResult
 import magi.aenerv7.ppembytv.data.model.ServerConfig
 import magi.aenerv7.ppembytv.data.model.ServerPingState
@@ -142,7 +148,13 @@ private sealed class Screen {
     data class Library(val libraryId: String, val libraryName: String) : Screen()
     data class LiveTv(val libraryName: String) : Screen()
     data class Detail(val itemId: String) : Screen()
-    data class Player(val item: MediaItem, val mediaSourceId: String?) : Screen()
+    data class Player(
+        val item: MediaItem,
+        val mediaSourceId: String?,
+        val audioStreamIndex: Int?,
+        val subtitleStreamIndex: Int?,
+        val returnItemId: String,
+    ) : Screen()
     data object Favorites : Screen()
     data object Search : Screen()
     data object Settings : Screen()
@@ -175,7 +187,7 @@ fun AppRoot(
             Screen.Home -> Screen.ServerList
             is Screen.Library, is Screen.LiveTv, is Screen.Detail, Screen.Favorites, Screen.Search -> Screen.Home
             Screen.Settings -> if (currentServer == null) Screen.ServerList else Screen.Home
-            is Screen.Player -> Screen.Detail(active.item.id)
+            is Screen.Player -> Screen.Detail(active.returnItemId)
             Screen.ServerList -> Screen.ServerList
         }
     }
@@ -272,7 +284,15 @@ fun AppRoot(
             is Screen.Detail -> DetailScreen(
                 server = currentServer,
                 itemId = s.itemId,
-                onPlay = { item, mediaSourceId -> screen = Screen.Player(item, mediaSourceId) },
+                onPlay = { item, mediaSourceId, audioStreamIndex, subtitleStreamIndex ->
+                    screen = Screen.Player(
+                        item = item,
+                        mediaSourceId = mediaSourceId,
+                        audioStreamIndex = audioStreamIndex,
+                        subtitleStreamIndex = subtitleStreamIndex,
+                        returnItemId = s.itemId,
+                    )
+                },
                 onBack = { screen = Screen.Home },
                 onOpenDetail = { id -> screen = Screen.Detail(id) },
                 onSearch = { screen = Screen.Search },
@@ -327,7 +347,9 @@ fun AppRoot(
                 server = currentServer,
                 item = s.item,
                 mediaSourceId = s.mediaSourceId,
-                onBack = { screen = Screen.Detail(s.item.id) },
+                audioStreamIndex = s.audioStreamIndex,
+                subtitleStreamIndex = s.subtitleStreamIndex,
+                onBack = { screen = Screen.Detail(s.returnItemId) },
             )
             }
         }
@@ -1646,7 +1668,7 @@ private fun LiveTvScreen(
 private fun DetailScreen(
     server: ServerConfig?,
     itemId: String,
-    onPlay: (MediaItem, String?) -> Unit,
+    onPlay: (MediaItem, String?, Int?, Int?) -> Unit,
     onBack: () -> Unit,
     onOpenDetail: (String) -> Unit,
     onSearch: () -> Unit,
@@ -1661,7 +1683,7 @@ private fun DetailScreen(
         val userId = RetrofitClient.getUserId()
         val item = runCatching {
             api.getItemDetails(
-                userId, itemId, "PrimaryImageAspectRatio,Overview,Genres,ProductionYear,PremiereDate,CommunityRating,ChildCount,UserData,SeriesName,SeasonName,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,People,MediaSources,Chapters"
+                userId, itemId, "PrimaryImageAspectRatio,Overview,Genres,ProductionYear,PremiereDate,CommunityRating,ChildCount,UserData,SeriesName,SeasonName,IndexNumber,ParentIndexNumber,SeriesId,SeasonId,People,MediaSources,MediaStreams,Path,Size,Bitrate,Container,Chapters"
             ).body()
         }.getOrNull()
         itemState.value = item
@@ -1673,7 +1695,7 @@ private fun DetailScreen(
                 }
         } else if (item?.type == "Season") {
             runCatching {
-                api.getEpisodes(item.seriesId.orEmpty(), userId, item.id, "PrimaryImageAspectRatio,BasicSyncInfo,Overview,RunTimeTicks,MediaSources,UserData,BackdropImageTags,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
+                api.getEpisodes(item.seriesId.orEmpty(), userId, item.id, "PrimaryImageAspectRatio,BasicSyncInfo,Overview,RunTimeTicks,MediaSources,MediaStreams,Path,Size,Bitrate,Container,UserData,BackdropImageTags,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
             }.onSuccess { episodesState.value = it }
         }
     }
@@ -1682,7 +1704,7 @@ private fun DetailScreen(
         val item = itemState.value ?: return@LaunchedEffect
         if (item.type == "Series" && selectedSeasonId != null) {
             runCatching {
-                RetrofitClient.getApiService().getEpisodes(item.id, RetrofitClient.getUserId(), selectedSeasonId.orEmpty(), "PrimaryImageAspectRatio,BasicSyncInfo,Overview,RunTimeTicks,MediaSources,UserData,BackdropImageTags,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
+                RetrofitClient.getApiService().getEpisodes(item.id, RetrofitClient.getUserId(), selectedSeasonId.orEmpty(), "PrimaryImageAspectRatio,BasicSyncInfo,Overview,RunTimeTicks,MediaSources,MediaStreams,Path,Size,Bitrate,Container,UserData,BackdropImageTags,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
             }.onSuccess { episodesState.value = it }
         }
     }
@@ -1691,10 +1713,30 @@ private fun DetailScreen(
     val scope = rememberCoroutineScope()
     var favorite by remember(item?.id) { mutableStateOf(item?.userData?.isFavorite ?: false) }
     var played by remember(item?.id) { mutableStateOf(item?.userData?.played ?: false) }
-    val playFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    var selector by remember(item?.id) { mutableStateOf<DetailSelector?>(null) }
+    var actionMessage by remember(item?.id) { mutableStateOf<String?>(null) }
+    val playFocusRequester = remember { FocusRequester() }
+    val episodeFocusRequester = remember { FocusRequester() }
+    val detailScrollState = rememberScrollState()
     val playableItem = when (item?.type) {
         "Series", "Season" -> episodesState.value.firstOrNull()
         else -> item
+    }
+    var selectedMediaSourceId by remember(playableItem?.id) {
+        mutableStateOf(playableItem?.mediaSources?.firstOrNull()?.id)
+    }
+    var selectedAudioStreamIndex by remember(playableItem?.id, selectedMediaSourceId) { mutableStateOf<Int?>(null) }
+    var selectedSubtitleStreamIndex by remember(playableItem?.id, selectedMediaSourceId) { mutableStateOf<Int?>(null) }
+    val selectedMediaSource = playableItem?.mediaSources?.firstOrNull { it.id == selectedMediaSourceId }
+        ?: playableItem?.mediaSources?.firstOrNull()
+    val audioStreams = selectedMediaSource?.mediaStreams.orEmpty().filter { it.type == "Audio" }
+    val subtitleStreams = selectedMediaSource?.mediaStreams.orEmpty().filter { it.type == "Subtitle" }
+
+    LaunchedEffect(actionMessage) {
+        if (actionMessage != null) {
+            delay(2_500)
+            actionMessage = null
+        }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF080B13))) {
@@ -1729,14 +1771,14 @@ private fun DetailScreen(
         } else {
             val compact = maxWidth < 900.dp || maxHeight < 500.dp
             val leftPadding = if (compact) 24.dp else 48.dp
-            LaunchedEffect(playableItem?.id, compact) {
-                if (playableItem != null && !compact) playFocusRequester.requestFocus()
+            LaunchedEffect(playableItem?.id) {
+                if (playableItem != null) playFocusRequester.requestFocus()
             }
             Column(
                 Modifier
                     .fillMaxSize()
-                    .then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                    .padding(start = leftPadding, end = leftPadding),
+                    .verticalScroll(detailScrollState)
+                    .padding(start = leftPadding, end = leftPadding, bottom = 24.dp),
             ) {
                 Spacer(Modifier.height(if (compact) 112.dp else 176.dp))
                 if (item.imageTags?.logo != null) {
@@ -1778,10 +1820,27 @@ private fun DetailScreen(
                 Spacer(Modifier.height(10.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DetailRoundIcon(Icons.Default.Movie, "预告片") { }
-                    DetailRoundIcon(Icons.Default.MusicNote, "音轨") { }
-                    DetailRoundIcon(Icons.Default.Subtitles, "字幕") { }
-                    DetailRoundIcon(Icons.Default.FileDownload, "下载") { }
+                    if (!playableItem?.mediaSources.isNullOrEmpty()) {
+                        DetailRoundIcon(
+                            Icons.Default.Movie,
+                            "视频版本",
+                            active = selectedMediaSourceId != playableItem?.mediaSources?.firstOrNull()?.id,
+                        ) { selector = DetailSelector.Version }
+                    }
+                    if (audioStreams.isNotEmpty()) {
+                        DetailRoundIcon(
+                            Icons.Default.MusicNote,
+                            "音轨",
+                            active = selectedAudioStreamIndex != null,
+                        ) { selector = DetailSelector.Audio }
+                    }
+                    if (subtitleStreams.isNotEmpty()) {
+                        DetailRoundIcon(
+                            Icons.Default.Subtitles,
+                            "字幕",
+                            active = selectedSubtitleStreamIndex != null,
+                        ) { selector = DetailSelector.Subtitle }
+                    }
                     if (seasonsState.value.isNotEmpty()) {
                         val selectedIndex = seasonsState.value.indexOfFirst { it.id == selectedSeasonId }.coerceAtLeast(0)
                         TvButton(
@@ -1790,13 +1849,17 @@ private fun DetailScreen(
                             horizontalPadding = 22,
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
                         ) {
-                            val next = (selectedIndex + 1) % seasonsState.value.size
-                            selectedSeasonId = seasonsState.value[next].id
+                            selector = DetailSelector.Season
                         }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
 
+                val episodeTargetModifier = if (episodesState.value.isNotEmpty()) {
+                    Modifier.focusProperties { down = episodeFocusRequester }
+                } else {
+                    Modifier
+                }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (playableItem != null) {
                         val playLabel = if (item.type == "Series" || item.type == "Season") {
@@ -1806,31 +1869,73 @@ private fun DetailScreen(
                         }
                         TvButton(
                             text = playLabel,
-                            modifier = Modifier.width(128.dp),
+                            modifier = episodeTargetModifier.width(128.dp),
                             height = 48,
                             horizontalPadding = 12,
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = Color.White,
                             focusRequester = playFocusRequester,
-                        ) { onPlay(playableItem, playableItem.mediaSources?.firstOrNull()?.id) }
-                    }
-                    DetailRoundIcon(Icons.Default.Search, "搜索", onClick = onSearch)
-                    DetailRoundIcon(Icons.Default.Check, "标记已看", active = played) {
-                        played = !played
-                        scope.launch {
-                            val api = RetrofitClient.getApiService()
-                            if (played) api.markPlayedItem(RetrofitClient.getUserId(), item.id)
-                            else api.deletePlayedItem(RetrofitClient.getUserId(), item.id)
+                        ) {
+                            onPlay(
+                                playableItem,
+                                selectedMediaSource?.id,
+                                selectedAudioStreamIndex,
+                                selectedSubtitleStreamIndex,
+                            )
                         }
                     }
-                    DetailRoundIcon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "收藏", active = favorite) {
-                        favorite = !favorite
+                    DetailRoundIcon(Icons.Default.Search, "搜索", modifier = episodeTargetModifier, onClick = onSearch)
+                    DetailRoundIcon(Icons.Default.Check, "标记已看", active = played, modifier = episodeTargetModifier) {
+                        val nextPlayed = !played
+                        played = nextPlayed
                         scope.launch {
-                            val api = RetrofitClient.getApiService()
-                            if (favorite) api.markFavorite(RetrofitClient.getUserId(), item.id)
-                            else api.unmarkFavorite(RetrofitClient.getUserId(), item.id)
+                            val succeeded = runCatching {
+                                val api = RetrofitClient.getApiService()
+                                val response = if (nextPlayed) {
+                                    api.markPlayedItem(RetrofitClient.getUserId(), item.id)
+                                } else {
+                                    api.deletePlayedItem(RetrofitClient.getUserId(), item.id)
+                                }
+                                response.isSuccessful
+                            }.getOrDefault(false)
+                            if (succeeded) {
+                                actionMessage = if (nextPlayed) "已标记为已看" else "已取消已看"
+                            } else {
+                                played = !nextPlayed
+                                actionMessage = "更新已看状态失败"
+                            }
                         }
                     }
+                    DetailRoundIcon(
+                        if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        "收藏",
+                        active = favorite,
+                        modifier = episodeTargetModifier,
+                    ) {
+                        val nextFavorite = !favorite
+                        favorite = nextFavorite
+                        scope.launch {
+                            val succeeded = runCatching {
+                                val api = RetrofitClient.getApiService()
+                                val response = if (nextFavorite) {
+                                    api.markFavorite(RetrofitClient.getUserId(), item.id)
+                                } else {
+                                    api.unmarkFavorite(RetrofitClient.getUserId(), item.id)
+                                }
+                                response.isSuccessful
+                            }.getOrDefault(false)
+                            if (succeeded) {
+                                actionMessage = if (nextFavorite) "已收藏" else "已取消收藏"
+                            } else {
+                                favorite = !nextFavorite
+                                actionMessage = "更新收藏状态失败"
+                            }
+                        }
+                    }
+                }
+                actionMessage?.let { message ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(message, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                 }
                 Spacer(Modifier.height(10.dp))
 
@@ -1858,9 +1963,29 @@ private fun DetailScreen(
                 if (episodesState.value.isNotEmpty()) {
                     Spacer(Modifier.height(20.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp), contentPadding = PaddingValues(bottom = 20.dp)) {
-                        items(episodesState.value, key = { it.id }) { episodeItem ->
-                            DetailEpisodeCard(episodeItem) {
-                                onPlay(episodeItem, episodeItem.mediaSources?.firstOrNull()?.id)
+                        itemsIndexed(episodesState.value, key = { _, episode -> episode.id }) { index, episodeItem ->
+                            DetailEpisodeCard(
+                                episode = episodeItem,
+                                focusRequester = if (index == 0) episodeFocusRequester else null,
+                                onFocused = {
+                                    scope.launch { detailScrollState.animateScrollTo(detailScrollState.maxValue) }
+                                },
+                            ) {
+                                val selectedSourceIndex = playableItem?.mediaSources.orEmpty()
+                                    .indexOfFirst { it.id == selectedMediaSource?.id }
+                                    .coerceAtLeast(0)
+                                val episodeSource = episodeItem.mediaSources?.getOrNull(selectedSourceIndex)
+                                    ?: episodeItem.mediaSources?.firstOrNull()
+                                val episodeAudioIndex = selectedAudioStreamIndex?.takeIf { selected ->
+                                    episodeSource?.mediaStreams.orEmpty().any { it.type == "Audio" && it.index == selected }
+                                }
+                                val episodeSubtitleIndex = selectedSubtitleStreamIndex?.let { selected ->
+                                    if (selected < 0 || episodeSource?.mediaStreams.orEmpty().any {
+                                            it.type == "Subtitle" && it.index == selected
+                                        }
+                                    ) selected else null
+                                }
+                                onPlay(episodeItem, episodeSource?.id, episodeAudioIndex, episodeSubtitleIndex)
                             }
                         }
                     }
@@ -1870,6 +1995,147 @@ private fun DetailScreen(
             }
         }
     }
+
+    val dialogOptions = when (selector) {
+        DetailSelector.Season -> seasonsState.value.mapIndexed { index, season ->
+            DetailOption(season.id, season.name ?: "第 ${season.indexNumber ?: index + 1} 季")
+        }
+        DetailSelector.Version -> playableItem?.mediaSources.orEmpty().map { source ->
+            DetailOption(source.id, source.displayName)
+        }
+        DetailSelector.Audio -> listOf(DetailOption(DETAIL_OPTION_AUTO, "默认音轨")) +
+            audioStreams.map { stream -> DetailOption(stream.index.toString(), detailStreamLabel(stream, "音轨")) }
+        DetailSelector.Subtitle -> listOf(
+            DetailOption(DETAIL_OPTION_AUTO, "自动字幕"),
+            DetailOption(DETAIL_OPTION_OFF, "关闭字幕"),
+        ) + subtitleStreams.map { stream -> DetailOption(stream.index.toString(), detailStreamLabel(stream, "字幕")) }
+        null -> emptyList()
+    }
+    val selectedDialogOption = when (selector) {
+        DetailSelector.Season -> selectedSeasonId
+        DetailSelector.Version -> selectedMediaSource?.id
+        DetailSelector.Audio -> selectedAudioStreamIndex?.toString() ?: DETAIL_OPTION_AUTO
+        DetailSelector.Subtitle -> when (selectedSubtitleStreamIndex) {
+            null -> DETAIL_OPTION_AUTO
+            -1 -> DETAIL_OPTION_OFF
+            else -> selectedSubtitleStreamIndex.toString()
+        }
+        null -> null
+    }
+    selector?.let { activeSelector ->
+        DetailOptionDialog(
+            title = when (activeSelector) {
+                DetailSelector.Season -> "选择季"
+                DetailSelector.Version -> "选择视频版本"
+                DetailSelector.Audio -> "选择音轨"
+                DetailSelector.Subtitle -> "选择字幕"
+            },
+            options = dialogOptions,
+            selectedId = selectedDialogOption,
+            onSelect = { option ->
+                when (activeSelector) {
+                    DetailSelector.Season -> selectedSeasonId = option.id
+                    DetailSelector.Version -> {
+                        selectedMediaSourceId = option.id
+                        selectedAudioStreamIndex = null
+                        selectedSubtitleStreamIndex = null
+                    }
+                    DetailSelector.Audio -> {
+                        selectedAudioStreamIndex = option.id.takeUnless { it == DETAIL_OPTION_AUTO }?.toIntOrNull()
+                    }
+                    DetailSelector.Subtitle -> {
+                        selectedSubtitleStreamIndex = when (option.id) {
+                            DETAIL_OPTION_AUTO -> null
+                            DETAIL_OPTION_OFF -> -1
+                            else -> option.id.toIntOrNull()
+                        }
+                    }
+                }
+                selector = null
+            },
+            onDismiss = { selector = null },
+        )
+    }
+}
+
+private enum class DetailSelector { Season, Version, Audio, Subtitle }
+
+private data class DetailOption(val id: String, val label: String)
+
+private const val DETAIL_OPTION_AUTO = "__auto__"
+private const val DETAIL_OPTION_OFF = "__off__"
+
+private fun detailStreamLabel(stream: MediaStream, fallback: String): String {
+    val title = stream.displayTitle?.takeIf { it.isNotBlank() }
+        ?: stream.title?.takeIf { it.isNotBlank() }
+        ?: stream.language?.takeIf { it.isNotBlank() }
+        ?: "$fallback ${stream.index}"
+    val codec = stream.codec?.takeIf { it.isNotBlank() }?.uppercase()
+    return listOfNotNull(title, codec).distinct().joinToString(" · ").take(52)
+}
+
+@Composable
+private fun DetailOptionDialog(
+    title: String,
+    options: List<DetailOption>,
+    selectedId: String?,
+    onSelect: (DetailOption) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val selectedFocusRequester = remember { FocusRequester() }
+    val focusIndex = options.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        BackHandler(onBack = onDismiss)
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                Modifier
+                    .width(620.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF111A29))
+                    .padding(24.dp),
+            ) {
+                Text(title, color = Color.White, style = MaterialTheme.typography.headlineMedium)
+                Spacer(Modifier.height(16.dp))
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 390.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(options, key = { _, option -> option.id }) { index, option ->
+                        val selected = option.id == selectedId
+                        TvButton(
+                            text = if (selected) "已选 · ${option.label}" else option.label,
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            height = 52,
+                            focusRequester = if (index == focusIndex) selectedFocusRequester else null,
+                            onClick = { onSelect(option) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                TvButton(
+                    text = "取消",
+                    modifier = Modifier.align(Alignment.End),
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    height = 48,
+                    onClick = onDismiss,
+                )
+            }
+        }
+        LaunchedEffect(options, focusIndex) {
+            if (options.isNotEmpty()) selectedFocusRequester.requestFocus()
+        }
+    }
 }
 
 @Composable
@@ -1877,11 +2143,12 @@ private fun DetailRoundIcon(
     icon: ImageVector,
     contentDescription: String,
     active: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        Modifier
+        modifier
             .size(44.dp)
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .scale(if (focused) 1.06f else 1f)
@@ -1919,11 +2186,26 @@ private fun MediaBadges(item: MediaItem) {
 }
 
 @Composable
-private fun DetailEpisodeCard(episode: MediaItem, onClick: () -> Unit) {
+private fun DetailEpisodeCard(
+    episode: MediaItem,
+    focusRequester: FocusRequester? = null,
+    onFocused: () -> Unit = {},
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
     Column(
-        Modifier.width(194.dp).tvClickable(onClick = onClick, onFocusChanged = { focused = it }).scale(if (focused) 1.04f else 1f),
+        Modifier
+            .width(194.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .tvClickable(
+                onClick = onClick,
+                onFocusChanged = {
+                    focused = it
+                    if (it) onFocused()
+                },
+            )
+            .scale(if (focused) 1.04f else 1f),
     ) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color(0xFF111A29)).tvFocusBorder(focused, shape),
