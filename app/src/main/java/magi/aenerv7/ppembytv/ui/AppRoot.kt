@@ -972,6 +972,21 @@ private fun LoginScreen(
 private const val HOME_PAGE_SIZE = 20
 private const val HOME_FIELDS =
     "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,PremiereDate,SeriesName,ParentIndexNumber,IndexNumber,SeriesId"
+private const val HOME_LIBRARY_FIELDS =
+    "$HOME_FIELDS,CommunityRating,ChildCount,RecursiveItemCount,UserData"
+private const val HOME_LIBRARY_SORT = "DateLastContentAdded,DateCreated,SortName"
+
+private fun Library.homeIncludeItemTypes(): String = when (collectionType?.lowercase()) {
+    "movies" -> "Movie,Video"
+    "tvshows" -> "Series"
+    "musicvideos" -> "MusicVideo"
+    "boxsets" -> "BoxSet"
+    "music" -> "MusicAlbum"
+    else -> "Series,Movie,Video,MusicVideo,MusicAlbum"
+}
+
+private fun Library.isHomeMediaLibrary(): Boolean =
+    name != "播放列表" && !collectionType.equals("playlists", true)
 
 @Composable
 private fun HomeScreen(
@@ -985,11 +1000,8 @@ private fun HomeScreen(
 ) {
     val libraries = remember { mutableStateOf<List<Library>>(emptyList()) }
     val resumeItems = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
-    val latestItems = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     val resumeTotal = remember { mutableIntStateOf(0) }
-    val latestTotal = remember { mutableIntStateOf(0) }
     val resumeListState = rememberLazyListState()
-    val latestListState = rememberLazyListState()
     val mediaFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -1014,24 +1026,6 @@ private fun HomeScreen(
         }
     }
 
-    suspend fun fetchLatestPage(startIndex: Int) {
-        val s = server ?: return
-        val api = RetrofitClient.getApiService()
-        val userId = RetrofitClient.getUserId()
-        runCatching {
-            api.getItems(
-                userId, "", "DateCreated", "Descending", HOME_FIELDS,
-                true, "Movie,Episode,Series,Video", "Primary,Backdrop,Thumb", "", HOME_PAGE_SIZE, startIndex,
-            ).body()
-        }.onSuccess { qr ->
-            if (qr == null) return@onSuccess
-            val items = qr.items ?: emptyList()
-            latestItems.value = if (startIndex == 0) items else (latestItems.value + items).distinctBy { it.id }
-            latestTotal.intValue = qr.totalRecordCount
-            Log.d("HomeScreen", "最新媒体分页加载: startIndex=$startIndex, 返回${items.size}项, 总数${qr.totalRecordCount}")
-        }
-    }
-
     LaunchedEffect(server) {
         val s = server ?: return@LaunchedEffect
         val api = RetrofitClient.getApiService()
@@ -1039,7 +1033,6 @@ private fun HomeScreen(
         runCatching { api.getLibraries(userId, "ItemCounts,PrimaryImageAspectRatio").body()?.items ?: emptyList() }
             .onSuccess { libraries.value = it }
         fetchResumePage(0)
-        fetchLatestPage(0)
     }
 
     // 继续观看：滚动接近末尾时加载下一页（与参考 APK 首页分页行为一致）
@@ -1049,17 +1042,6 @@ private fun HomeScreen(
             .collect { lastVisible ->
                 if (lastVisible >= resumeItems.value.size - 4 && resumeItems.value.size < resumeTotal.intValue) {
                     fetchResumePage(resumeItems.value.size)
-                }
-            }
-    }
-
-    // 最新媒体：同上
-    LaunchedEffect(latestItems.value.size) {
-        snapshotFlow { latestListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-            .distinctUntilChanged()
-            .collect { lastVisible ->
-                if (lastVisible >= latestItems.value.size - 4 && latestItems.value.size < latestTotal.intValue) {
-                    fetchLatestPage(latestItems.value.size)
                 }
             }
     }
@@ -1088,7 +1070,7 @@ private fun HomeScreen(
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             contentPadding = PaddingValues(horizontal = 0.dp),
         ) {
-            items(libraries.value.filterNot { it.name == "播放列表" || it.collectionType.equals("playlists", true) }) { lib ->
+            items(libraries.value.filter { it.isHomeMediaLibrary() }, key = { it.id }) { lib ->
                 LibraryCard(
                     library = lib,
                     onClick = { onOpenLibrary(lib) },
@@ -1100,14 +1082,142 @@ private fun HomeScreen(
             SectionTitle("继续观看")
             Spacer(Modifier.height(10.dp))
             ItemRow(resumeItems.value, resumeListState, onOpenDetail)
+            Spacer(Modifier.height(18.dp))
         }
-        Spacer(Modifier.height(18.dp))
-        if (latestItems.value.isNotEmpty()) {
-            SectionTitle("最新媒体")
-            Spacer(Modifier.height(10.dp))
-            ItemRow(latestItems.value, latestListState, onOpenDetail)
+        libraries.value.filter { it.isHomeMediaLibrary() }.forEach { library ->
+            androidx.compose.runtime.key(library.id) {
+                HomeLibrarySection(
+                    server = server,
+                    library = library,
+                    onOpenDetail = onOpenDetail,
+                )
+            }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun HomeLibrarySection(
+    server: ServerConfig?,
+    library: Library,
+    onOpenDetail: (String) -> Unit,
+) {
+    val sectionItems = remember(library.id) { mutableStateOf<List<MediaItem>>(emptyList()) }
+    val totalCount = remember(library.id) { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+    var loading by remember(library.id) { mutableStateOf(false) }
+
+    suspend fun fetchPage(startIndex: Int) {
+        if (server == null || loading) return
+        loading = true
+        try {
+            val api = RetrofitClient.getApiService()
+            val userId = RetrofitClient.getUserId()
+            val response = if (library.isLiveTvLibrary()) {
+                api.getLiveTvChannels(
+                    userId = userId,
+                    fields = HOME_LIBRARY_FIELDS,
+                    enableImages = true,
+                    imageTypeLimit = 1,
+                    enableImageTypes = "Primary,Backdrop,Thumb",
+                    enableUserData = true,
+                    addCurrentProgram = true,
+                    sortBy = "DefaultChannelOrder",
+                    sortOrder = "Ascending",
+                    startIndex = startIndex,
+                    limit = HOME_PAGE_SIZE,
+                )
+            } else {
+                var mediaResponse = api.getItems(
+                    userId = userId,
+                    parentId = library.id,
+                    sortBy = HOME_LIBRARY_SORT,
+                    sortOrder = "Descending",
+                    fields = HOME_LIBRARY_FIELDS,
+                    recursive = true,
+                    includeItemTypes = library.homeIncludeItemTypes(),
+                    enableImageTypes = "Primary,Backdrop,Thumb",
+                    filters = "",
+                    limit = HOME_PAGE_SIZE,
+                    startIndex = startIndex,
+                )
+                if (!mediaResponse.isSuccessful && mediaResponse.code() in setOf(400, 500)) {
+                    Log.w(
+                        "HomeScreen",
+                        "媒体库栏目不支持首页排序，回退到 DateCreated: library=${library.name}",
+                    )
+                    mediaResponse = api.getItems(
+                        userId = userId,
+                        parentId = library.id,
+                        sortBy = "DateCreated,SortName",
+                        sortOrder = "Descending",
+                        fields = HOME_LIBRARY_FIELDS,
+                        recursive = true,
+                        includeItemTypes = library.homeIncludeItemTypes(),
+                        enableImageTypes = "Primary,Backdrop,Thumb",
+                        filters = "",
+                        limit = HOME_PAGE_SIZE,
+                        startIndex = startIndex,
+                    )
+                }
+                mediaResponse
+            }
+
+            if (!response.isSuccessful) {
+                Log.w(
+                    "HomeScreen",
+                    "媒体库栏目加载失败: library=${library.name}, startIndex=$startIndex, HTTP ${response.code()}",
+                )
+                return
+            }
+            val result = response.body() ?: return
+            val pageItems = result.items ?: emptyList()
+            sectionItems.value = if (startIndex == 0) {
+                pageItems.distinctBy { it.id }
+            } else {
+                (sectionItems.value + pageItems).distinctBy { it.id }
+            }
+            totalCount.intValue = result.totalRecordCount
+            Log.d(
+                "HomeScreen",
+                "媒体库栏目分页加载: library=${library.name}, startIndex=$startIndex, " +
+                    "返回${pageItems.size}项, 总数${result.totalRecordCount}",
+            )
+        } catch (e: Exception) {
+            Log.w("HomeScreen", "媒体库栏目加载失败: library=${library.name}, startIndex=$startIndex", e)
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(server, library.id) {
+        sectionItems.value = emptyList()
+        totalCount.intValue = 0
+        fetchPage(0)
+    }
+
+    LaunchedEffect(server, library.id, listState) {
+        snapshotFlow {
+            Triple(
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                sectionItems.value.size,
+                totalCount.intValue,
+            )
+        }
+            .distinctUntilChanged()
+            .collect { (lastVisible, itemCount, total) ->
+                if (itemCount > 0 && lastVisible >= itemCount - 4 && itemCount < total) {
+                    fetchPage(itemCount)
+                }
+            }
+    }
+
+    if (sectionItems.value.isNotEmpty()) {
+        SectionTitle(library.name)
+        Spacer(Modifier.height(10.dp))
+        ItemRow(sectionItems.value, listState, onOpenDetail)
+        Spacer(Modifier.height(18.dp))
     }
 }
 
@@ -1124,10 +1234,10 @@ private fun SectionTitle(text: String) {
 @Composable
 private fun ItemRow(items: List<MediaItem>, listState: LazyListState, onOpenDetail: (String) -> Unit) {
     LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        items(items) { item ->
+        items(items, key = { it.id }) { item ->
             MediaLandscapeCard(
                 title = item.name,
-                subtitle = item.seriesName ?: (item.productionYear?.toString()),
+                subtitle = item.currentProgram?.name ?: item.seriesName ?: (item.productionYear?.toString()),
                 imageUrl = item.backdropImageTags?.firstOrNull()?.let { tag -> backdropUrl(item.id, tag, 640) }
                     ?: imageUrl(item.id, "Primary", item.imageTags?.primary, 640),
                 progress = item.userData?.playedPercentage?.toFloat(),
