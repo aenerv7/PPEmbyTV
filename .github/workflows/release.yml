@@ -108,6 +108,7 @@ jobs:
             Android TV Emby 客户端。功能参考 ChaiChaiEmbyTV（不含弹幕）。
 
             ### 功能
+            - 🎨 与 PP TV 图标一致的蓝黑品牌主题
             - 🎬 Android TV 优先的 Compose 焦点导航，全局支持触摸操作
             - 🎮 柴柴 Emby 风格播放器：播放/暂停、前后 10 秒、倍速、音轨与字幕切换
             - 📱 手机和平板强制横屏，适配横屏触摸布局与系统键盘

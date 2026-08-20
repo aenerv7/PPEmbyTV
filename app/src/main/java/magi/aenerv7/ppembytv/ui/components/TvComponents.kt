@@ -86,7 +86,7 @@ fun Modifier.tvFocusBorder(focused: Boolean, shape: RoundedCornerShape = Rounded
         if (focused) Modifier.border(2.dp, TvFocusBorder, shape) else Modifier
     )
 
-/** 复刻原版主按钮：焦糖色胶囊按钮，聚焦时缩放 1.05 + 白色 2dp 边框。 */
+/** PP TV 主按钮：品牌蓝胶囊按钮，聚焦时缩放 1.05 + 白色 2dp 边框。 */
 @Composable
 fun TvButton(
     text: String,
@@ -199,7 +199,7 @@ fun TvCheckRow(
                 .size(22.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(if (checked) MaterialTheme.colorScheme.primary else Color.Transparent)
-                .border(1.dp, if (checked) MaterialTheme.colorScheme.primary else Color(0xFF8C867A), RoundedCornerShape(4.dp)),
+                .border(1.dp, if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)),
             contentAlignment = Alignment.Center,
         ) {
             if (checked) {

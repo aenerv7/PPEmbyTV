@@ -23,8 +23,8 @@ android {
         applicationId = "magi.aenerv7.ppembytv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 6
-        versionName = (project.findProperty("versionName") as String?) ?: "0.0.6"
+        versionCode = 7
+        versionName = (project.findProperty("versionName") as String?) ?: "0.0.7"
     }
 
     signingConfigs {

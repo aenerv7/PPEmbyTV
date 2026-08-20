@@ -416,11 +416,11 @@ private fun PlayerIconButton(
             .size(46.dp)
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .clip(shape)
-            .background(if (focused) Color.White else Color(0xFF2D2D31))
+            .background(if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
             .tvFocusBorder(focused, shape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = if (focused) Color.Black else Color.White, modifier = Modifier.size(25.dp))
+        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(25.dp))
     }
 }
 
@@ -433,12 +433,12 @@ private fun PlayerPillButton(text: String, onClick: () -> Unit) {
             .height(42.dp)
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .clip(shape)
-            .background(if (focused) Color.White else Color(0xFF2D2D31))
+            .background(if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
             .tvFocusBorder(focused, shape)
             .padding(horizontal = 17.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (focused) Color.Black else Color.White, style = MaterialTheme.typography.titleMedium)
+        Text(text, color = Color.White, style = MaterialTheme.typography.titleMedium)
     }
 }
 

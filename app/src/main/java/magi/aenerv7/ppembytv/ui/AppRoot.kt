@@ -181,13 +181,13 @@ fun AppRoot(
     }
 
     PpEmbyTvTheme {
-        // 复刻原版暖棕渐变背景（ThemeBackground.kt：纯色底 + 左上径向光晕 + 底部压暗）
+        // PP TV 蓝黑背景：图标近黑底、左上蓝色光晕与底部压暗。
         Box(
             Modifier
                 .fillMaxSize()
                 .drawBehind {
-                    drawRect(Color(0xFF110C09))
-                    val glowColor = Color(0xFF785111)
+                    drawRect(Color(0xFF080B13))
+                    val glowColor = Color(0xFF145FB5)
                     val maxDim = max(size.width, size.height)
                     drawRect(
                         brush = Brush.radialGradient(
@@ -457,8 +457,8 @@ private fun ServerCard(
             .tvClickable(onClick = onEnter, onFocusChanged = { focused = it })
             .clip(shape)
             .background(
-                if (focused) Color(0xFF68380F)
-                else Color(0xFF39291F)
+                if (focused) Color(0xFF174B82)
+                else Color(0xFF152235)
             )
             .tvFocusBorder(focused, shape),
     ) {
@@ -528,8 +528,8 @@ private fun AddServerCard(onAdd: () -> Unit) {
             .tvClickable(onClick = onAdd, onFocusChanged = { focused = it })
             .clip(shape)
             .background(
-                if (focused) Color(0xFF68380F)
-                else Color(0xFF4B3917)
+                if (focused) Color(0xFF174B82)
+                else Color(0xFF182C48)
             )
             .tvFocusBorder(focused, shape)
             .padding(horizontal = 18.dp),
@@ -781,7 +781,7 @@ private fun AddServerScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    Text(u, color = Color(0xFF8C867A), style = MaterialTheme.typography.bodySmall)
+                    Text(u, color = Color(0xFF91A8C5), style = MaterialTheme.typography.bodySmall)
                 } else {
                     Text(
                         "正在启动扫码配置服务...",
@@ -792,7 +792,7 @@ private fun AddServerScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "扫码后填写的内容会实时同步到右侧表单",
-                    color = Color(0xFF8C867A),
+                    color = Color(0xFF91A8C5),
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,
                 )
@@ -868,7 +868,7 @@ private fun AddServerScreen(
                 }
                 Spacer(Modifier.height(20.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TvButton("取消", onClick = onBack, containerColor = Color(0xFF33261D))
+                    TvButton("取消", onClick = onBack, containerColor = Color(0xFF172234))
                     TvButton(if (saving) "保存中..." else "保存", onClick = { save() })
                 }
                 Spacer(Modifier.height(12.dp))
@@ -1146,7 +1146,7 @@ private fun HomeServerChip(alias: String, onClick: () -> Unit) {
             .height(45.dp)
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .clip(shape)
-            .background(if (focused) Color(0xFF0A8D62) else Color.Transparent)
+            .background(if (focused) Color(0xFF1556A3) else Color.Transparent)
             .tvFocusBorder(focused, shape)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1168,14 +1168,14 @@ private fun ServerMark(size: Int) {
                 .size((size * 0.78f).dp)
                 .rotate(45f)
                 .clip(RoundedCornerShape(2.dp))
-                .background(Color(0xFF087B59)),
+                .background(Color(0xFF145AA8)),
         )
         Box(
             Modifier
                 .size((size * 0.60f).dp)
                 .rotate(45f)
                 .clip(RoundedCornerShape(2.dp))
-                .background(Color(0xFF10A873)),
+                .background(Color(0xFF2E8BFF)),
         )
         Icon(
             Icons.Default.PlayArrow,
@@ -1238,7 +1238,7 @@ private fun LibraryCard(library: Library, onClick: () -> Unit) {
                 .fillMaxWidth()
                 .height(123.dp)
                 .clip(shape)
-                .background(Color(0xFF2C2119)),
+                .background(Color(0xFF111A29)),
         ) {
             val tag = library.imageTags?.primary ?: library.primaryImageTag
             AsyncImage(
@@ -1289,7 +1289,7 @@ private fun MediaLandscapeCard(
                 .fillMaxWidth()
                 .height(124.dp)
                 .clip(shape)
-                .background(Color(0xFF2C2119))
+                .background(Color(0xFF111A29))
                 .tvFocusBorder(focused, shape),
         ) {
             if (imageUrl != null) {
@@ -1305,10 +1305,10 @@ private fun MediaLandscapeCard(
                     .size(48.dp)
                     .align(Alignment.Center)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color.White.copy(alpha = 0.62f)),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.82f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "播放", tint = Color(0xFF4A4A4A), modifier = Modifier.size(30.dp))
+                Icon(Icons.Default.PlayArrow, contentDescription = "播放", tint = Color.White, modifier = Modifier.size(30.dp))
             }
             if (progress != null) {
                 Box(
@@ -1316,11 +1316,9 @@ private fun MediaLandscapeCard(
                         .fillMaxWidth()
                         .height(4.dp)
                         .align(Alignment.BottomCenter)
-                        .background(Color.White.copy(alpha = 0.3f)),
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
                 ) {
-                    Box(
-                        Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(Color.White)
-                    )
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
                 }
             }
         }
@@ -1589,7 +1587,7 @@ private fun DetailScreen(
         else -> item
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF130B06))) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF080B13))) {
         if (item != null) {
             AsyncImage(
                 model = backdropUrl(item.id, item.backdropImageTags?.firstOrNull(), 1920),
@@ -1603,8 +1601,8 @@ private fun DetailScreen(
                 Brush.verticalGradient(
                     0f to Color.Transparent,
                     0.42f to Color.Black.copy(alpha = 0.14f),
-                    0.76f to Color(0xD91B0D05),
-                    1f to Color(0xFF1B0D05),
+                    0.76f to Color(0xD9080B13),
+                    1f to Color(0xFF080B13),
                 )
             )
         )
@@ -1680,7 +1678,7 @@ private fun DetailScreen(
                             text = seasonsState.value[selectedIndex].name ?: "第 ${selectedIndex + 1} 季",
                             height = 46,
                             horizontalPadding = 22,
-                            containerColor = Color.White.copy(alpha = 0.34f),
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
                         ) {
                             val next = (selectedIndex + 1) % seasonsState.value.size
                             selectedSeasonId = seasonsState.value[next].id
@@ -1701,8 +1699,8 @@ private fun DetailScreen(
                             modifier = Modifier.width(128.dp),
                             height = 48,
                             horizontalPadding = 12,
-                            containerColor = Color(0xFFF1F1F1),
-                            contentColor = Color(0xFF333333),
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = Color.White,
                             focusRequester = playFocusRequester,
                         ) { onPlay(playableItem, playableItem.mediaSources?.firstOrNull()?.id) }
                     }
@@ -1778,7 +1776,7 @@ private fun DetailRoundIcon(
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .scale(if (focused) 1.06f else 1f)
             .clip(RoundedCornerShape(50))
-            .background(if (active) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.34f))
+            .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
             .tvFocusBorder(focused, RoundedCornerShape(50)),
         contentAlignment = Alignment.Center,
     ) {
@@ -1818,7 +1816,7 @@ private fun DetailEpisodeCard(episode: MediaItem, onClick: () -> Unit) {
         Modifier.width(194.dp).tvClickable(onClick = onClick, onFocusChanged = { focused = it }).scale(if (focused) 1.04f else 1f),
     ) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color(0xFF2C2119)).tvFocusBorder(focused, shape),
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color(0xFF111A29)).tvFocusBorder(focused, shape),
         ) {
             AsyncImage(
                 model = imageUrl(episode.id, "Primary", episode.imageTags?.primary, 640),
@@ -1827,10 +1825,10 @@ private fun DetailEpisodeCard(episode: MediaItem, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
             )
             Box(
-                Modifier.size(38.dp).align(Alignment.Center).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.7f)),
+                Modifier.size(38.dp).align(Alignment.Center).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.82f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "播放", tint = Color(0xFF333333), modifier = Modifier.size(26.dp))
+                Icon(Icons.Default.PlayArrow, contentDescription = "播放", tint = Color.White, modifier = Modifier.size(26.dp))
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -2008,7 +2006,7 @@ private fun SettingsScreen(
                 .fillMaxWidth(if (compact) 0.82f else 0.75f)
                 .fillMaxHeight(if (compact) 0.94f else 0.85f)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF181310))
+                .background(Color(0xFF0F1623))
                 .padding(horizontal = if (compact) 10.dp else 20.dp, vertical = if (compact) 5.dp else 10.dp),
         ) {
             Column(Modifier.width(if (compact) 160.dp else 200.dp).fillMaxHeight()) {
@@ -2024,7 +2022,7 @@ private fun SettingsScreen(
                 }
             }
             Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
-            Box(Modifier.fillMaxHeight().width(1.dp).background(Color(0xFF4B4039)))
+            Box(Modifier.fillMaxHeight().width(1.dp).background(Color(0xFF2A3B52)))
             Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
             Box(Modifier.weight(1f).fillMaxHeight().padding(top = if (compact) 27.dp else 47.dp)) {
                 when (page) {
@@ -2059,7 +2057,7 @@ private fun SettingsTab(label: String, selected: Boolean, compact: Boolean, onCl
             .height(if (compact) 36.dp else 50.dp)
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .clip(shape)
-            .background(if (selected) Color(0xFF70401D) else Color(0xFF39291F))
+            .background(if (selected) Color(0xFF174B82) else Color(0xFF152235))
             .tvFocusBorder(focused || selected, shape)
             .padding(horizontal = if (compact) 18.dp else 30.dp),
         contentAlignment = Alignment.CenterStart,
@@ -2115,7 +2113,7 @@ private fun AppearanceSettingsPanel(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Text("外观", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(20.dp))
-        Text("当前主题：暖棕深色", color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Text("当前主题：蓝黑", color = Color.White, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(12.dp))
         TvButton("返回配置") { onBack() }
     }

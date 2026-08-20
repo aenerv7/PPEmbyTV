@@ -6,40 +6,37 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * 复刻参考 App（柴柴emby）的暖棕深色主题。
- * 颜色取自原版真机/模拟器截图（1920x1080 像素采样）：
- * - 背景渐变：#322317（顶）→ #150F0A（底）
- * - 主色（焦糖橙）：#D39454（按钮/标题/选中高亮）
- * - 输入框容器：#2D221B；二维码卡片：#4B3917
+ * PP TV 品牌色板：取自应用图标的近黑底、白色线稿和 banner 蓝色强调线。
+ * 深蓝层级负责区分背景、容器和浮层，亮蓝只用于选中与主要操作。
  */
-private val WarmBrownColors = darkColorScheme(
-    primary = Color(0xFFD39454),
+private val BlueBlackColors = darkColorScheme(
+    primary = Color(0xFF0A84FF),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF5B3514),
-    onPrimaryContainer = Color(0xFFF6EFE5),
-    secondary = Color(0xFF8C867A),
-    onSecondary = Color(0xFF2A1D12),
-    secondaryContainer = Color(0xFF3A2E24),
-    onSecondaryContainer = Color(0xFFE8DCCB),
-    background = Color(0xFF1C140C),
-    onBackground = Color(0xFFF2EEE9),
-    surface = Color(0xFF2D221B),
-    onSurface = Color(0xFFF2EEE9),
-    surfaceVariant = Color(0xFF3A2E24),
-    onSurfaceVariant = Color(0xFFC0B9B1),
-    outline = Color(0xFF5E5546),
-    error = Color(0xFFFF6B6B),
+    primaryContainer = Color(0xFF123B68),
+    onPrimaryContainer = Color(0xFFEAF4FF),
+    secondary = Color(0xFF91A8C5),
+    onSecondary = Color(0xFF07111F),
+    secondaryContainer = Color(0xFF1A2A3F),
+    onSecondaryContainer = Color(0xFFDCE9F8),
+    background = Color(0xFF080B13),
+    onBackground = Color(0xFFF4F7FB),
+    surface = Color(0xFF111A29),
+    onSurface = Color(0xFFF4F7FB),
+    surfaceVariant = Color(0xFF1A2638),
+    onSurfaceVariant = Color(0xFFB9C8DA),
+    outline = Color(0xFF3C506A),
+    error = Color(0xFFFF6B72),
 )
 
-/** 服务器列表/空状态背景用的竖向渐变（与原版截图一致）。 */
-val TvBackgroundTop: Color = Color(0xFF322317)
-val TvBackgroundBottom: Color = Color(0xFF150F0A)
+/** 服务器列表/空状态背景用的蓝黑竖向渐变。 */
+val TvBackgroundTop: Color = Color(0xFF10213A)
+val TvBackgroundBottom: Color = Color(0xFF070A12)
 
-/** 输入框容器色（原版聚焦/未聚焦输入框底色）。 */
-val TvInputContainer: Color = Color(0xFF2D221B)
+/** 输入框容器色。 */
+val TvInputContainer: Color = Color(0xFF111B2A)
 
 /** 二维码卡片底色。 */
-val TvQrPanel: Color = Color(0xFF4B3917)
+val TvQrPanel: Color = Color(0xFF152943)
 
 /** 通用焦点高亮边框色（原版为纯白 2dp）。 */
 val TvFocusBorder: Color = Color.White
@@ -47,7 +44,7 @@ val TvFocusBorder: Color = Color.White
 @Composable
 fun PpEmbyTvTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = WarmBrownColors,
+        colorScheme = BlueBlackColors,
         content = content,
     )
 }

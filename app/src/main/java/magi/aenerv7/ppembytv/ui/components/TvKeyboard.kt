@@ -99,7 +99,7 @@ private fun KeyButton(label: String, wide: Boolean = false, onClick: () -> Unit)
             .height(44.dp)
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .clip(RoundedCornerShape(8.dp))
-            .background(if (focused) Color(0xFF4C8DFF) else MaterialTheme.colorScheme.surfaceVariant),
+            .background(if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = Color.White, style = MaterialTheme.typography.labelLarge)
