@@ -1,10 +1,20 @@
 # PPEmbyTV 复刻交接文档
 
-> 本文档供新会话快速接续当前进度。最后更新：本会话（约 10 轮 goal 循环）结束。
+> 本文档供新会话快速接续当前进度。最后更新：2026-08-20。
 
 ## 一句话现状
 
-把反编译的参考 APK **ChaiChaiEmbyTV（`com.dh.myembyapp` v0.3.1-alpha2，即「柴柴emby」）** 复刻成了一个**可用、可构建**的 Android TV Emby 客户端，改名 **皮皮 TV / PP TV**（包名 `magi.aenerv7.ppembytv`），**已移除弹幕**。`assembleDebug` 构建通过，产出 3 个 ABI 拆分 APK。
+当前实现已使用同一套真实 Emby 数据逐页运行参考 APK 与 PP TV，完成首页、媒体库、搜索、收藏、详情和播放器主流程的视觉/交互对照。应用保持 Android TV 优先，并为主流程组件统一加入触摸支持；手机端只支持强制横屏。
+
+### 2026-08-20 UI 对照结果
+
+- 参考截图在 `.tools/ui-baseline/reference/`，实现截图在 `.tools/ui-baseline/current/`；不要只依据反编译代码判断 UI。
+- 首页、媒体库、搜索、收藏、详情页已改成参考应用的暖棕色视觉、尺寸层级、海报列数、导航结构和状态标记。
+- 详情页使用真实背景图、Logo、季/集数据，以及播放、预告、音轨、字幕、下载、搜索、已看、收藏等对应图标；已看和收藏会调用真实 Emby API。
+- 播放器禁用 Media3 默认控制器，使用参考应用同序的图标工具栏：后退 10 秒、播放/暂停、前进 10 秒、下一项、列表、字幕、音轨、倍速、解码和更多。触摸屏点按画面、遥控器方向键均可唤出控制层。
+- `TvComponents.tvClickable` 是全局 D-pad/触摸入口，`TvInput` 同时处理遥控器确认编辑与触屏系统键盘。不要在页面里另造只响应遥控器的 clickable。
+- Manifest 已全局声明 `android:screenOrientation="landscape"`；验证视口为 TV `1920x1080 @ 320 dpi` 和手机横屏 `2400x1080 @ 480 dpi`，不处理竖屏。
+- 真实服务账号仅在 `.tools/LOCAL_TEST_CREDENTIALS.md`，禁止复制进源码、日志或文档。
 
 ---
 

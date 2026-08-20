@@ -1,25 +1,50 @@
 package magi.aenerv7.ppembytv.ui
 
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,12 +61,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import kotlin.math.max
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -58,8 +96,6 @@ import magi.aenerv7.ppembytv.data.SubtitlePreferences
 import magi.aenerv7.ppembytv.data.TraktSettings
 import magi.aenerv7.ppembytv.data.WebDavSyncManager
 import magi.aenerv7.ppembytv.data.WebDavSyncSettings
-import magi.aenerv7.ppembytv.data.api.IqiyiSuggestApi
-import magi.aenerv7.ppembytv.data.api.IqiyiSuggestItem
 import magi.aenerv7.ppembytv.data.api.RetrofitClient
 import magi.aenerv7.ppembytv.data.api.TraktRetrofitClient
 import magi.aenerv7.ppembytv.data.model.AuthenticationResult
@@ -68,6 +104,8 @@ import magi.aenerv7.ppembytv.data.model.Library
 import magi.aenerv7.ppembytv.data.model.MediaItem
 import magi.aenerv7.ppembytv.data.model.QueryResult
 import magi.aenerv7.ppembytv.data.model.ServerConfig
+import magi.aenerv7.ppembytv.data.model.ServerPingState
+import magi.aenerv7.ppembytv.data.model.ServerPingStatus
 import magi.aenerv7.ppembytv.data.model.TraktDeviceCodeRequest
 import magi.aenerv7.ppembytv.data.model.TraktDeviceCodeResponse
 import magi.aenerv7.ppembytv.data.model.TraktDeviceTokenRequest
@@ -83,12 +121,17 @@ import magi.aenerv7.ppembytv.server.SubtitleFontUploadServerManager
 import magi.aenerv7.ppembytv.server.WebDavSyncConfigServerManager
 import magi.aenerv7.ppembytv.ui.components.PosterCard
 import magi.aenerv7.ppembytv.ui.components.TvButton
-import magi.aenerv7.ppembytv.ui.components.TvKeyboard
+import magi.aenerv7.ppembytv.ui.components.TvCard
+import magi.aenerv7.ppembytv.ui.components.TvCheckRow
+import magi.aenerv7.ppembytv.ui.components.TvIconButton
+import magi.aenerv7.ppembytv.ui.components.TvOutlinedTextField
 import magi.aenerv7.ppembytv.ui.components.backdropUrl
 import magi.aenerv7.ppembytv.ui.components.imageUrl
 import magi.aenerv7.ppembytv.ui.components.tvClickable
+import magi.aenerv7.ppembytv.ui.components.tvFocusBorder
 import magi.aenerv7.ppembytv.ui.player.PlayerScreen
 import magi.aenerv7.ppembytv.ui.theme.PpEmbyTvTheme
+import magi.aenerv7.ppembytv.ui.theme.TvQrPanel
 import magi.aenerv7.ppembytv.util.generateQrBitmap
 
 private sealed class Screen {
@@ -100,6 +143,7 @@ private sealed class Screen {
     data class LiveTv(val libraryName: String) : Screen()
     data class Detail(val itemId: String) : Screen()
     data class Player(val item: MediaItem, val mediaSourceId: String?) : Screen()
+    data object Favorites : Screen()
     data object Search : Screen()
     data object Settings : Screen()
 }
@@ -125,18 +169,58 @@ fun AppRoot(
         }
     }
 
+    BackHandler(enabled = screen != Screen.ServerList) {
+        screen = when (val active = screen) {
+            Screen.AddServer, is Screen.Login -> Screen.ServerList
+            Screen.Home -> Screen.ServerList
+            is Screen.Library, is Screen.LiveTv, is Screen.Detail, Screen.Favorites, Screen.Search -> Screen.Home
+            Screen.Settings -> if (currentServer == null) Screen.ServerList else Screen.Home
+            is Screen.Player -> Screen.Detail(active.item.id)
+            Screen.ServerList -> Screen.ServerList
+        }
+    }
+
     PpEmbyTvTheme {
-        when (val s = screen) {
-            Screen.ServerList -> ServerListScreen(
-                serverPrefs = serverPrefs,
-                onAdd = { screen = Screen.AddServer },
-                onEnter = { server ->
-                    currentServer = server
-                    userId = server.userId.orEmpty()
-                    screen = Screen.Home
+        // 复刻原版暖棕渐变背景（ThemeBackground.kt：纯色底 + 左上径向光晕 + 底部压暗）
+        Box(
+            Modifier
+                .fillMaxSize()
+                .drawBehind {
+                    drawRect(Color(0xFF110C09))
+                    val glowColor = Color(0xFF785111)
+                    val maxDim = max(size.width, size.height)
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                glowColor.copy(alpha = 0.4f),
+                                glowColor.copy(alpha = 0.22f),
+                                Color.Transparent,
+                            ),
+                            center = androidx.compose.ui.geometry.Offset(size.width * 0.3f, size.height * 0.25f),
+                            radius = maxDim * 1.08f,
+                        ),
+                    )
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0.0f to Color.Transparent,
+                            0.58f to Color.Black.copy(alpha = 0.1f),
+                            1.0f to Color.Black.copy(alpha = 0.52f),
+                        ),
+                    )
                 },
-                onDelete = { id -> serverPrefs.deleteServer(id) },
-            )
+        ) {
+            when (val s = screen) {
+                Screen.ServerList -> ServerListScreen(
+                    serverPrefs = serverPrefs,
+                    onAdd = { screen = Screen.AddServer },
+                    onEnter = { server ->
+                        currentServer = server
+                        userId = server.userId.orEmpty()
+                        screen = Screen.Home
+                    },
+                    onDelete = { id -> serverPrefs.deleteServer(id) },
+                    onSettings = { screen = Screen.Settings },
+                )
 
             Screen.AddServer -> AddServerScreen(
                 serverPrefs = serverPrefs,
@@ -164,6 +248,7 @@ fun AppRoot(
                     screen = if (lib.isLiveTvLibrary()) Screen.LiveTv(lib.name) else Screen.Library(lib.id, lib.name)
                 },
                 onOpenDetail = { id -> screen = Screen.Detail(id) },
+                onOpenFavorites = { screen = Screen.Favorites },
                 onOpenSearch = { screen = Screen.Search },
                 onOpenSettings = { screen = Screen.Settings },
                 onOpenServers = { screen = Screen.ServerList },
@@ -190,19 +275,53 @@ fun AppRoot(
                 onPlay = { item, mediaSourceId -> screen = Screen.Player(item, mediaSourceId) },
                 onBack = { screen = Screen.Home },
                 onOpenDetail = { id -> screen = Screen.Detail(id) },
+                onSearch = { screen = Screen.Search },
+            )
+
+            Screen.Favorites -> FavoritesScreen(
+                server = currentServer,
+                onOpenDetail = { id -> screen = Screen.Detail(id) },
+                onBack = { screen = Screen.Home },
+                onOpenSearch = { screen = Screen.Search },
+                onOpenServers = { screen = Screen.ServerList },
+                onOpenSettings = { screen = Screen.Settings },
             )
 
             Screen.Search -> SearchScreen(
                 server = currentServer,
                 onOpenDetail = { id -> screen = Screen.Detail(id) },
                 onBack = { screen = Screen.Home },
+                onOpenFavorites = { screen = Screen.Favorites },
+                onOpenServers = { screen = Screen.ServerList },
+                onOpenSettings = { screen = Screen.Settings },
             )
 
-            Screen.Settings -> SettingsScreen(
-                serverPrefs = serverPrefs,
-                server = currentServer,
-                onBack = { screen = Screen.Home },
-            )
+            Screen.Settings -> Box(Modifier.fillMaxSize()) {
+                if (currentServer != null) {
+                    HomeScreen(
+                        server = currentServer,
+                        onOpenLibrary = {},
+                        onOpenDetail = {},
+                        onOpenFavorites = {},
+                        onOpenSearch = {},
+                        onOpenSettings = {},
+                        onOpenServers = {},
+                    )
+                } else {
+                    ServerListScreen(
+                        serverPrefs = serverPrefs,
+                        onAdd = {},
+                        onEnter = {},
+                        onDelete = {},
+                        onSettings = {},
+                    )
+                }
+                SettingsScreen(
+                    serverPrefs = serverPrefs,
+                    server = currentServer,
+                    onBack = { screen = if (currentServer == null) Screen.ServerList else Screen.Home },
+                )
+            }
 
             is Screen.Player -> PlayerScreen(
                 server = currentServer,
@@ -210,6 +329,7 @@ fun AppRoot(
                 mediaSourceId = s.mediaSourceId,
                 onBack = { screen = Screen.Detail(s.item.id) },
             )
+            }
         }
     }
 }
@@ -221,31 +341,294 @@ private fun ServerListScreen(
     onAdd: () -> Unit,
     onEnter: (ServerConfig) -> Unit,
     onDelete: (String) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val servers = remember { mutableStateOf(serverPrefs.getAllServers()) }
-    LaunchedEffect(Unit) { servers.value = serverPrefs.getAllServers() }
-    Column(Modifier.fillMaxSize().padding(48.dp)) {
-        Text("选择服务器", color = Color.White, style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(24.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(servers.value) { server ->
-                Row(
-                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium).padding(16.dp),
+    val lastUsedId = remember { mutableStateOf(serverPrefs.getLastUsedServerId()) }
+    val pingStates = remember { mutableStateOf<Map<String, ServerPingState>>(emptyMap()) }
+    val contentFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) {
+        servers.value = serverPrefs.getAllServers()
+        lastUsedId.value = serverPrefs.getLastUsedServerId()
+        // 参考 App 默认聚焦第一个服务器；空列表时聚焦添加按钮。
+        repeat(10) {
+            contentFocusRequester.requestFocus()
+            delay(100)
+        }
+    }
+    // 复刻原版：服务器列表逐个测速（显示延迟 ms / 不通）
+    LaunchedEffect(servers.value) {
+        servers.value.forEach { s ->
+            pingStates.value = pingStates.value + (s.id to ServerPingState.Measuring)
+            pingStates.value = pingStates.value + (s.id to pingServer(s))
+        }
+    }
+
+    Box(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 15.dp)) {
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "服务器",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.displayMedium,
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+            if (servers.value.isEmpty()) {
+                EmptyServerList(onAdd = onAdd, focusRequester = contentFocusRequester)
+            } else {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(server.alias, color = Color.White, style = MaterialTheme.typography.titleMedium)
-                        Text(server.displayAddress, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    items(servers.value) { server ->
+                        ServerCard(
+                            server = server,
+                            isLastUsed = server.id == lastUsedId.value,
+                            pingState = pingStates.value[server.id] ?: ServerPingState.Idle,
+                            focusRequester = if (server.id == servers.value.firstOrNull()?.id) contentFocusRequester else null,
+                            onEnter = { onEnter(server) },
+                            onDelete = { onDelete(server.id); servers.value = serverPrefs.getAllServers() },
+                        )
                     }
-                    TvButton("进入") { onEnter(server) }
-                    Spacer(Modifier.width(8.dp))
-                    TvButton("删除") { onDelete(server.id); servers.value = serverPrefs.getAllServers() }
+                    item {
+                        AddServerCard(onAdd = onAdd)
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
-        TvButton("添加服务器") { onAdd() }
+        // 左上角设置齿轮（复刻原版）
+        TvIconButton(
+            icon = Icons.Default.Settings,
+            contentDescription = "设置",
+            modifier = Modifier.align(Alignment.TopStart),
+            onClick = onSettings,
+        )
     }
+}
+
+@Composable
+private fun EmptyServerList(
+    onAdd: () -> Unit,
+    focusRequester: androidx.compose.ui.focus.FocusRequester,
+) {
+    Column(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "还没有保存的服务器",
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Spacer(Modifier.height(32.dp))
+        TvButton(
+            "+ 添加服务器",
+            onClick = onAdd,
+            modifier = Modifier.width(300.dp),
+            horizontalPadding = 0,
+            focusRequester = focusRequester,
+        )
+    }
+}
+
+@Composable
+private fun ServerCard(
+    server: ServerConfig,
+    isLastUsed: Boolean,
+    pingState: ServerPingState,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    onEnter: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        modifier = Modifier
+            .width(207.dp)
+            .height(134.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .tvClickable(onClick = onEnter, onFocusChanged = { focused = it })
+            .clip(shape)
+            .background(
+                if (focused) Color(0xFF68380F)
+                else Color(0xFF39291F)
+            )
+            .tvFocusBorder(focused, shape),
+    ) {
+        Column(Modifier.fillMaxSize().padding(14.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                ServerMark(size = 38)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    server.alias,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (isLastUsed) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "上次使用",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "线路：${server.currentRouteDisplayName}",
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    if (server.isLoggedIn()) "未播放" else "需重新登录",
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    server.username,
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                PingText(pingState)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddServerCard(onAdd: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        modifier = Modifier
+            .width(186.dp)
+            .height(120.dp)
+            .tvClickable(onClick = onAdd, onFocusChanged = { focused = it })
+            .clip(shape)
+            .background(
+                if (focused) Color(0xFF68380F)
+                else Color(0xFF4B3917)
+            )
+            .tvFocusBorder(focused, shape)
+            .padding(horizontal = 18.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("+", color = MaterialTheme.colorScheme.onSecondaryContainer, style = MaterialTheme.typography.displayMedium)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "添加新服务器",
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            style = MaterialTheme.typography.titleLarge,
+        )
+    }
+}
+
+@Composable
+private fun PingText(state: ServerPingState) {
+    val status = state.status
+    val text: String
+    val color: Color
+    when (status) {
+        ServerPingStatus.IDLE, ServerPingStatus.MEASURING -> {
+            text = "..."
+            color = Color.White.copy(alpha = 0.68f)
+        }
+        ServerPingStatus.UNREACHABLE -> {
+            text = "不通"
+            color = Color.White.copy(alpha = 0.68f)
+        }
+        ServerPingStatus.HTTP_ERROR -> {
+            text = state.httpStatusCode?.toString() ?: "ERR"
+            color = Color(0xFFF5C15D)
+        }
+        ServerPingStatus.GOOD -> {
+            text = "${state.latencyMs ?: 0}ms"
+            color = Color(0xFF4FD096)
+        }
+        ServerPingStatus.NORMAL -> {
+            text = "${state.latencyMs ?: 0}ms"
+            color = Color(0xFF6CB7FF)
+        }
+        ServerPingStatus.WARNING -> {
+            text = "${state.latencyMs ?: 0}ms"
+            color = Color(0xFFF5C15D)
+        }
+        ServerPingStatus.HIGH -> {
+            text = "${state.latencyMs ?: 0}ms"
+            color = Color(0xFFFF9F43)
+        }
+        ServerPingStatus.BAD -> {
+            text = "${state.latencyMs ?: 0}ms"
+            color = MaterialTheme.colorScheme.error
+        }
+    }
+    Text(
+        text,
+        color = color,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        maxLines = 1,
+    )
+}
+
+private suspend fun pingServer(server: ServerConfig): ServerPingState = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val start = System.currentTimeMillis()
+    try {
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .readTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .build()
+        val request = okhttp3.Request.Builder().url(server.fullUrl).head().build()
+        client.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                return@withContext ServerPingState.fromHttpStatusCode(resp.code)
+            }
+            val latency = System.currentTimeMillis() - start
+            ServerPingState.fromLatency(latency)
+        }
+    } catch (e: Exception) {
+        ServerPingState.Unreachable
+    }
+}
+
+/** 复刻原版 q2.c 的地址解析：剥离 http(s):// 与尾部 :port。 */
+private fun parseServerAddress(input: String): Triple<String, String?, Int?> {
+    var s = input.trim()
+    var protocol: String? = null
+    Regex("^(https?)://", RegexOption.IGNORE_CASE).find(s)?.let { m ->
+        protocol = m.groupValues[1].lowercase()
+        s = s.substring(m.value.length)
+    }
+    s = s.trimEnd('/', '\\')
+    var port: Int? = null
+    Regex(":(\\d+)$").find(s)?.let { m ->
+        port = m.groupValues[1].toIntOrNull()
+        s = s.substring(0, m.range.first)
+    }
+    return Triple(s, protocol, port)
 }
 
 // ===== Add server =====
@@ -255,100 +638,265 @@ private fun AddServerScreen(
     onSaved: (ServerConfig) -> Unit,
     onBack: () -> Unit,
 ) {
-    var host by remember { mutableStateOf("") }
+    var protocol by remember { mutableStateOf("http") }
+    var host by remember { mutableStateOf("192.168.1.1") }
     var port by remember { mutableStateOf("8096") }
     var path by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("admin") }
     var password by remember { mutableStateOf("") }
-    var protocol by remember { mutableStateOf("http") }
-    var showQr by remember { mutableStateOf(false) }
+    var alias by remember { mutableStateOf("我的Emby服务器") }
+    var note by remember { mutableStateOf("") }
+    var directOnly by remember { mutableStateOf(false) }
+    var strmDirect by remember { mutableStateOf(false) }
+    var trustAllCerts by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val context = LocalContext.current.applicationContext
+    val manager = remember { ConfigServerManager(context) }
+    var qrUrl by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val firstFieldFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
-    if (showQr) {
-        QrConfigOverlay(
-            onConfig = { config ->
-                serverPrefs.saveServer(config)
-                onSaved(config)
-            },
-            onBack = { showQr = false },
-        )
-        return
+    // 复刻原版：进入添加页即自动启动扫码配置服务，扫码内容实时同步到右侧表单
+    LaunchedEffect(Unit) {
+        qrUrl = manager.startServer(currentConfig = null) { config ->
+            protocol = config.protocol
+            host = config.host
+            port = config.port.toString()
+            path = config.path.orEmpty()
+            username = config.username
+            password = config.password
+            alias = config.alias
+            note = config.note.orEmpty()
+            directOnly = config.directOnly
+            strmDirect = config.enableStrmDirectPlay
+            trustAllCerts = config.trustAllCerts
+            error = null
+        }
+        repeat(10) {
+            firstFieldFocusRequester.requestFocus()
+            delay(100)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { manager.stopServer() }
     }
 
-    Column(Modifier.fillMaxSize().padding(48.dp)) {
-        Text("添加服务器", color = Color.White, style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(24.dp))
-        InputField("协议 (http/https)", protocol) { protocol = it }
-        InputField("地址", host) { host = it }
-        InputField("端口", port) { port = it }
-        InputField("路径 (可选)", path) { path = it }
-        InputField("用户名", username) { username = it }
-        InputField("密码", password) { password = it }
-        Spacer(Modifier.height(24.dp))
-        Row {
-            TvButton("保存并连接") {
-                val server = ServerConfig(
-                    id = serverPrefs.generateServerId(),
-                    alias = host.ifBlank { "我的Emby服务器" },
-                    protocol = protocol.ifBlank { "http" },
-                    host = host.trim(),
-                    port = port.toIntOrNull() ?: 8096,
-                    path = path.trim().ifBlank { null },
-                    username = username.trim(),
-                    password = password,
+    fun save() {
+        if (saving) return
+        if (host.isBlank()) {
+            error = "服务器地址不能为空"
+            return
+        }
+        val parsed = parseServerAddress(host)
+        val finalProtocol = parsed.second ?: protocol
+        val finalPort = (parsed.third ?: port.toIntOrNull()) ?: 8096
+        val finalHost = parsed.first
+        val server = ServerConfig(
+            id = serverPrefs.generateServerId(),
+            alias = alias.ifBlank { "我的Emby服务器" },
+            protocol = finalProtocol,
+            host = finalHost,
+            port = finalPort,
+            path = path.trim().ifBlank { null },
+            username = username.trim(),
+            password = password,
+            directOnly = directOnly,
+            enableStrmDirectPlay = strmDirect,
+            trustAllCerts = trustAllCerts,
+            note = note.trim().ifBlank { null },
+        )
+        saving = true
+        error = null
+        scope.launch {
+            try {
+                ProxyManager.setDirectOnly(server.directOnly)
+                RetrofitClient.initialize(server.fullUrl)
+                RetrofitClient.setAuthToken("", "")
+                RetrofitClient.setTrustAllCerts(server.trustAllCerts)
+                val response = RetrofitClient.getApiService().authenticateUser(
+                    mapOf("Username" to username, "Pw" to password)
                 )
-                serverPrefs.saveServer(server)
-                onSaved(server)
+                val auth: AuthenticationResult? = response.body()
+                if (response.isSuccessful && auth?.user?.id != null) {
+                    val saved = server.copy(
+                        userId = auth.user.id,
+                        accessToken = auth.accessToken,
+                        lastLoginTime = System.currentTimeMillis(),
+                        isVerified = true,
+                    )
+                    serverPrefs.saveServer(saved)
+                    serverPrefs.setLastUsedServerId(saved.id)
+                    RetrofitClient.setAuthToken(auth.accessToken, auth.user.id)
+                    onSaved(saved)
+                } else {
+                    error = "连接验证失败，请检查服务器地址和登录信息"
+                }
+            } catch (e: java.net.ConnectException) {
+                error = "无法连接到服务器\n请检查地址、端口是否正确，以及服务器是否在运行"
+            } catch (e: java.net.SocketTimeoutException) {
+                error = "连接超时\n请检查网络连接或服务器是否可访问"
+            } catch (e: java.net.UnknownHostException) {
+                error = "无法解析服务器地址: ${server.host}\n请检查地址是否正确或网络连接"
+            } catch (e: javax.net.ssl.SSLHandshakeException) {
+                error = "SSL证书验证失败\n如果使用自签名证书，请勾选「信任所有SSL证书」选项"
+            } catch (e: Exception) {
+                error = "验证失败: ${e.message}"
+            } finally {
+                saving = false
             }
-            Spacer(Modifier.width(16.dp))
-            TvButton("扫码配置") { showQr = true }
-            Spacer(Modifier.width(16.dp))
-            TvButton("返回") { onBack() }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 15.dp)) {
+        Row(
+            Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            // 左侧扫码面板（复刻原版：整列卡片）
+            Column(
+                modifier = Modifier
+                    .width(350.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(TvQrPanel)
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    "📱 手机扫码配置",
+                    color = Color.White.copy(alpha = 0.9f),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(24.dp))
+                val u = qrUrl
+                if (u != null) {
+                    val qr = remember(u) { generateQrBitmap(u) }
+                    if (qr != null) {
+                        Image(
+                            bitmap = qr.asImageBitmap(),
+                            contentDescription = "二维码",
+                            modifier = Modifier.size(220.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text(u, color = Color(0xFF8C867A), style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text(
+                        "正在启动扫码配置服务...",
+                        color = Color.White.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "扫码后填写的内容会实时同步到右侧表单",
+                    color = Color(0xFF8C867A),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            // 右侧表单（复刻原版字段与顺序）
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text(
+                    if (false) "编辑服务器" else "添加服务器",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Spacer(Modifier.height(16.dp))
+                TvOutlinedTextField(
+                    value = alias,
+                    onValueChange = { alias = it },
+                    label = "服务器别名",
+                    focusRequester = firstFieldFocusRequester,
+                )
+                Spacer(Modifier.height(16.dp))
+                TvOutlinedTextField(value = note, onValueChange = { note = it }, placeholder = "备注（可选）")
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
+                    Column(Modifier.width(120.dp)) {
+                        Text(
+                            "协议",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                        )
+                        ProtocolToggle(protocol) { protocol = it }
+                    }
+                    TvOutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it },
+                        label = "服务器地址",
+                        placeholder = "192.168.1.100 或 emby.example.com",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                TvOutlinedTextField(value = port, onValueChange = { port = it }, label = "端口", keyboardType = KeyboardType.Number)
+                Spacer(Modifier.height(16.dp))
+                TvOutlinedTextField(value = path, onValueChange = { path = it }, placeholder = "路径（可选）")
+                Spacer(Modifier.height(16.dp))
+                TvOutlinedTextField(value = username, onValueChange = { username = it }, label = "用户名")
+                Spacer(Modifier.height(16.dp))
+                TvOutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = "密码",
+                    keyboardType = KeyboardType.Password,
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                Spacer(Modifier.height(16.dp))
+                TvCheckRow("仅直连（不使用代理）", directOnly) { directOnly = !directOnly }
+                Spacer(Modifier.height(8.dp))
+                TvCheckRow(
+                    "STRM直链播放",
+                    strmDirect,
+                    description = "开启后，此服务器的STRM文件会优先尝试直链播放，不清楚请不要开启",
+                ) { strmDirect = !strmDirect }
+                Spacer(Modifier.height(8.dp))
+                TvCheckRow("信任所有SSL证书（不安全）", trustAllCerts) { trustAllCerts = !trustAllCerts }
+                if (error != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvButton("取消", onClick = onBack, containerColor = Color(0xFF33261D))
+                    TvButton(if (saving) "保存中..." else "保存", onClick = { save() })
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "点击保存将验证服务器连接并保存配置",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
     }
 }
 
-// ===== QR config =====
 @Composable
-private fun QrConfigOverlay(
-    onConfig: (ServerConfig) -> Unit,
-    onBack: () -> Unit,
-) {
-    val context = LocalContext.current.applicationContext
-    val manager = remember { ConfigServerManager(context) }
-    var url by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        url = manager.startServer(currentConfig = null) { config ->
-            onConfig(config)
-        }
-    }
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        onDispose { manager.stopServer() }
-    }
-
-    Box(Modifier.fillMaxSize().background(Color.Black).padding(24.dp)) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("扫码配置服务器", color = Color.White, style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(12.dp))
-            Text("用手机扫描下方二维码，在网页中填写服务器信息并同步", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(24.dp))
-            val u = url
-            if (u != null) {
-                val qr = remember(u) { generateQrBitmap(u) }
-                if (qr != null) {
-                    Image(bitmap = qr.asImageBitmap(), contentDescription = "二维码", modifier = Modifier.width(320.dp).height(320.dp))
-                }
-                Spacer(Modifier.height(12.dp))
-                Text(u, color = Color.White, style = MaterialTheme.typography.titleMedium)
-            } else {
-                Text("正在启动配置服务...", color = Color.White)
-            }
-            Spacer(Modifier.height(24.dp))
-            TvButton("返回") { onBack() }
-        }
+private fun ProtocolToggle(protocol: String, onSelect: (String) -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .tvClickable(onClick = { onSelect(if (protocol == "http") "https" else "http") }, onFocusChanged = { focused = it })
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.primary)
+            .tvFocusBorder(focused, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(protocol, color = Color.White, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -371,9 +919,17 @@ private fun LoginScreen(
         Text("登录服务器", color = Color.White, style = MaterialTheme.typography.headlineMedium)
         Text(server?.displayAddress.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(24.dp))
-        InputField("用户名", username) { username = it }
-        InputField("密码", password) { password = it }
+        TvOutlinedTextField(value = username, onValueChange = { username = it }, label = "用户名")
+        Spacer(Modifier.height(16.dp))
+        TvOutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = "密码",
+            keyboardType = KeyboardType.Password,
+            visualTransformation = PasswordVisualTransformation(),
+        )
         if (error != null) {
+            Spacer(Modifier.height(12.dp))
             Text(error.orEmpty(), color = Color(0xFFFF6B6B))
         }
         Spacer(Modifier.height(24.dp))
@@ -422,6 +978,7 @@ private fun HomeScreen(
     server: ServerConfig?,
     onOpenLibrary: (Library) -> Unit,
     onOpenDetail: (String) -> Unit,
+    onOpenFavorites: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenServers: () -> Unit,
@@ -433,6 +990,14 @@ private fun HomeScreen(
     val latestTotal = remember { mutableIntStateOf(0) }
     val resumeListState = rememberLazyListState()
     val latestListState = rememberLazyListState()
+    val mediaFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        repeat(10) {
+            mediaFocusRequester.requestFocus()
+            delay(100)
+        }
+    }
 
     suspend fun fetchResumePage(startIndex: Int) {
         val s = server ?: return
@@ -499,50 +1064,271 @@ private fun HomeScreen(
             }
     }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("皮皮 TV", color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-            TvButton("搜索") { onOpenSearch() }
-            Spacer(Modifier.width(8.dp))
-            TvButton("设置") { onOpenSettings() }
-            Spacer(Modifier.width(8.dp))
-            TvButton("服务器") { onOpenServers() }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 48.dp, vertical = 6.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(54.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HomeServerChip(server?.alias ?: "服务器", onOpenServers)
+            Spacer(Modifier.weight(1f))
+            HomeNavChip("媒体", Icons.Default.VideoLibrary, active = true, focusRequester = mediaFocusRequester) {}
+            HomeNavChip("收藏", Icons.Default.Favorite, active = false, onClick = onOpenFavorites)
+            HomeNavChip("搜索", Icons.Default.Search, active = false, onClick = onOpenSearch)
+            HomeNavChip("", Icons.Default.Settings, active = false, onClick = onOpenSettings)
         }
-        Spacer(Modifier.height(16.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(libraries.value) { lib ->
-                TvButton(lib.name) { onOpenLibrary(lib) }
+        Spacer(Modifier.height(18.dp))
+        SectionTitle("我的媒体")
+        Spacer(Modifier.height(10.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            contentPadding = PaddingValues(horizontal = 0.dp),
+        ) {
+            items(libraries.value.filterNot { it.name == "播放列表" || it.collectionType.equals("playlists", true) }) { lib ->
+                LibraryCard(
+                    library = lib,
+                    onClick = { onOpenLibrary(lib) },
+                )
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(18.dp))
         if (resumeItems.value.isNotEmpty()) {
             SectionTitle("继续观看")
+            Spacer(Modifier.height(10.dp))
             ItemRow(resumeItems.value, resumeListState, onOpenDetail)
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(18.dp))
         if (latestItems.value.isNotEmpty()) {
             SectionTitle("最新媒体")
+            Spacer(Modifier.height(10.dp))
             ItemRow(latestItems.value, latestListState, onOpenDetail)
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(text, color = Color.White, style = MaterialTheme.typography.titleLarge)
-    Spacer(Modifier.height(8.dp))
+    Text(
+        text,
+        color = Color.White,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
 }
 
 @Composable
 private fun ItemRow(items: List<MediaItem>, listState: LazyListState, onOpenDetail: (String) -> Unit) {
-    LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         items(items) { item ->
-            PosterCard(
+            MediaLandscapeCard(
                 title = item.name,
                 subtitle = item.seriesName ?: (item.productionYear?.toString()),
-                imageUrl = imageUrl(item.id, "Primary", item.imageTags?.primary),
+                imageUrl = item.backdropImageTags?.firstOrNull()?.let { tag -> backdropUrl(item.id, tag, 640) }
+                    ?: imageUrl(item.id, "Primary", item.imageTags?.primary, 640),
+                progress = item.userData?.playedPercentage?.toFloat(),
                 onClick = { onOpenDetail(item.id) },
             )
+        }
+    }
+}
+
+@Composable
+private fun HomeServerChip(alias: String, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = Modifier
+            .height(45.dp)
+            .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
+            .clip(shape)
+            .background(if (focused) Color(0xFF0A8D62) else Color.Transparent)
+            .tvFocusBorder(focused, shape)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ServerMark(size = 24)
+        Spacer(Modifier.width(14.dp))
+        Text(alias, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+    }
+}
+
+@Composable
+private fun ServerMark(size: Int) {
+    Box(
+        modifier = Modifier.size(size.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size((size * 0.78f).dp)
+                .rotate(45f)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF087B59)),
+        )
+        Box(
+            Modifier
+                .size((size * 0.60f).dp)
+                .rotate(45f)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF10A873)),
+        )
+        Icon(
+            Icons.Default.PlayArrow,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size((size * 0.62f).dp),
+        )
+    }
+}
+
+@Composable
+private fun HomeNavChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    active: Boolean,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = Modifier
+            .height(45.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
+            .clip(shape)
+            .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
+            .tvFocusBorder(focused || active, shape)
+            .padding(
+                horizontal = when {
+                    label.isBlank() -> 12.dp
+                    active -> 16.dp
+                    else -> 10.dp
+                },
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = label.ifBlank { "设置" }, tint = Color.White, modifier = Modifier.size(20.dp))
+        if (label.isNotBlank()) {
+            Spacer(Modifier.width(6.dp))
+            Text(label, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun LibraryCard(library: Library, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .width(220.dp)
+            .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
+            .scale(if (focused) 1.04f else 1f)
+            .clip(shape)
+            .tvFocusBorder(focused, shape),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(123.dp)
+                .clip(shape)
+                .background(Color(0xFF2C2119)),
+        ) {
+            val tag = library.imageTags?.primary ?: library.primaryImageTag
+            AsyncImage(
+                model = imageUrl(library.id, "Primary", tag, 640),
+                contentDescription = library.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000)))
+                    ),
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            library.name,
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun MediaLandscapeCard(
+    title: String,
+    subtitle: String?,
+    imageUrl: String?,
+    progress: Float?,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .width(220.dp)
+            .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
+            .scale(if (focused) 1.04f else 1f),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(124.dp)
+                .clip(shape)
+                .background(Color(0xFF2C2119))
+                .tvFocusBorder(focused, shape),
+        ) {
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.White.copy(alpha = 0.62f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = "播放", tint = Color(0xFF4A4A4A), modifier = Modifier.size(30.dp))
+            }
+            if (progress != null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(Color.White.copy(alpha = 0.3f)),
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(Color.White)
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (subtitle != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, color = Color.White.copy(alpha = 0.62f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -560,15 +1346,17 @@ private fun LibraryScreen(
 ) {
     val itemsState = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     val totalCount = remember { mutableIntStateOf(0) }
-    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    var sortBy by remember { mutableStateOf("DateCreated") }
+    var sortOrder by remember { mutableStateOf("Descending") }
 
     suspend fun fetchPage(startIndex: Int) {
         val s = server ?: return
         val api = RetrofitClient.getApiService()
         runCatching {
             api.getItems(
-                RetrofitClient.getUserId(), libraryId, "SortName", "Ascending",
-                "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,PremiereDate,SeriesName,ParentIndexNumber,IndexNumber,SeriesId",
+                RetrofitClient.getUserId(), libraryId, sortBy, sortOrder,
+                "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,PremiereDate,SeriesName,ParentIndexNumber,IndexNumber,SeriesId,CommunityRating,ChildCount,RecursiveItemCount,UserData",
                 false, "", "Primary,Backdrop,Thumb", "", LIBRARY_PAGE_SIZE, startIndex,
             ).body()
         }.onSuccess { qr ->
@@ -580,11 +1368,15 @@ private fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(server, libraryId) { fetchPage(0) }
+    LaunchedEffect(server, libraryId, sortBy, sortOrder) {
+        itemsState.value = emptyList()
+        totalCount.intValue = 0
+        fetchPage(0)
+    }
 
     // 滚动接近末尾时加载下一页
     LaunchedEffect(itemsState.value.size) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
             .distinctUntilChanged()
             .collect { lastVisible ->
                 if (lastVisible >= itemsState.value.size - 6 && itemsState.value.size < totalCount.intValue) {
@@ -593,31 +1385,103 @@ private fun LibraryScreen(
             }
     }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(libraryName, color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-            TvButton("返回") { onBack() }
-        }
-        Spacer(Modifier.height(16.dp))
-        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(itemsState.value) { item ->
-                Row(
-                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.width(60.dp).height(90.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                        // thumbnail omitted for brevity
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(item.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
-                        if (item.seriesName != null) {
-                            Text(item.seriesName, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    TvButton("详情") { onOpenDetail(item.id) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxWidth < 900.dp || maxHeight < 500.dp
+        val gridColumns = if (compact) 4 else 6
+        Column(Modifier.fillMaxSize().padding(horizontal = if (compact) 24.dp else 60.dp, vertical = 12.dp)) {
+            Box(Modifier.fillMaxWidth().height(38.dp)) {
+            TvButton(
+                text = if (sortBy == "DateCreated") "排序：最新内容添加 ↓" else "排序：名称 A-Z ↓",
+                modifier = Modifier.align(Alignment.CenterStart).width(if (compact) 180.dp else 172.dp),
+                height = 38,
+                horizontalPadding = 12,
+            ) {
+                if (sortBy == "DateCreated") {
+                    sortBy = "SortName"
+                    sortOrder = "Ascending"
+                } else {
+                    sortBy = "DateCreated"
+                    sortOrder = "Descending"
                 }
             }
+                Text(libraryName, color = Color.White, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.Center))
+                Text(
+                    "共 ${itemsState.value.size}/${totalCount.intValue} 项",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                )
+            }
+            Spacer(Modifier.height(if (compact) 20.dp else 36.dp))
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(gridColumns),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp),
+                verticalArrangement = Arrangement.spacedBy(26.dp),
+            ) {
+                gridItems(itemsState.value, key = { it.id }) { item ->
+                    LibraryPosterCard(item = item, onClick = { onOpenDetail(item.id) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryPosterCard(item: MediaItem, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        Modifier
+            .width(120.dp)
+            .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
+            .scale(if (focused) 1.05f else 1f),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surface)
+                .tvFocusBorder(focused, shape),
+        ) {
+            AsyncImage(
+                model = imageUrl(item.id, "Primary", item.imageTags?.primary, 360),
+                contentDescription = item.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            val count = item.childCount ?: item.recursiveItemCount
+            if (count != null && count > 0) {
+                Text(
+                    count.toString(),
+                    color = Color.Black,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFFFD400))
+                        .padding(horizontal = 9.dp, vertical = 3.dp),
+                )
+            }
+            item.communityRating?.takeIf { it > 0f }?.let { rating ->
+                Text(
+                    String.format(java.util.Locale.US, "%.1f", rating),
+                    color = Color.Black,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .background(Color(0xFFFFD400))
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(item.name, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        item.productionYear?.let { year ->
+            Text(year.toString(), color = Color.White.copy(alpha = 0.62f), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -677,6 +1541,7 @@ private fun DetailScreen(
     onPlay: (MediaItem, String?) -> Unit,
     onBack: () -> Unit,
     onOpenDetail: (String) -> Unit,
+    onSearch: () -> Unit,
 ) {
     val itemState = remember { mutableStateOf<MediaItem?>(null) }
     val seasonsState = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
@@ -694,10 +1559,13 @@ private fun DetailScreen(
         itemState.value = item
         if (item?.type == "Series") {
             runCatching { api.getSeasons(item.id, userId).body()?.items ?: emptyList() }
-                .onSuccess { seasonsState.value = it }
+                .onSuccess { seasons ->
+                    seasonsState.value = seasons
+                    selectedSeasonId = seasons.firstOrNull()?.id
+                }
         } else if (item?.type == "Season") {
             runCatching {
-                api.getEpisodes(item.seriesId.orEmpty(), userId, item.id, "PrimaryImageAspectRatio,BasicSyncInfo,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
+                api.getEpisodes(item.seriesId.orEmpty(), userId, item.id, "PrimaryImageAspectRatio,BasicSyncInfo,Overview,RunTimeTicks,MediaSources,UserData,BackdropImageTags,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
             }.onSuccess { episodesState.value = it }
         }
     }
@@ -706,53 +1574,190 @@ private fun DetailScreen(
         val item = itemState.value ?: return@LaunchedEffect
         if (item.type == "Series" && selectedSeasonId != null) {
             runCatching {
-                RetrofitClient.getApiService().getEpisodes(item.id, RetrofitClient.getUserId(), selectedSeasonId.orEmpty(), "PrimaryImageAspectRatio,BasicSyncInfo,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
+                RetrofitClient.getApiService().getEpisodes(item.id, RetrofitClient.getUserId(), selectedSeasonId.orEmpty(), "PrimaryImageAspectRatio,BasicSyncInfo,Overview,RunTimeTicks,MediaSources,UserData,BackdropImageTags,SeriesName,ParentIndexNumber,IndexNumber", "ParentIndexNumber,IndexNumber", "Ascending").body()?.items ?: emptyList()
             }.onSuccess { episodesState.value = it }
         }
     }
 
     val item = itemState.value
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(item?.name ?: "详情", color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-            TvButton("返回") { onBack() }
-        }
-        Spacer(Modifier.height(16.dp))
+    val scope = rememberCoroutineScope()
+    var favorite by remember(item?.id) { mutableStateOf(item?.userData?.isFavorite ?: false) }
+    var played by remember(item?.id) { mutableStateOf(item?.userData?.played ?: false) }
+    val playFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val playableItem = when (item?.type) {
+        "Series", "Season" -> episodesState.value.firstOrNull()
+        else -> item
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF130B06))) {
         if (item != null) {
-            Text(item.overview ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4)
-            Spacer(Modifier.height(12.dp))
-            if (item.seriesName != null && item.type != "Series") {
-                Text("${item.seriesName} - ${item.seasonName ?: ""} 第${item.indexNumber ?: 0}集", color = Color.White)
-                Spacer(Modifier.height(12.dp))
+            AsyncImage(
+                model = backdropUrl(item.id, item.backdropImageTags?.firstOrNull(), 1920),
+                contentDescription = item.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.42f to Color.Black.copy(alpha = 0.14f),
+                    0.76f to Color(0xD91B0D05),
+                    1f to Color(0xFF1B0D05),
+                )
+            )
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    listOf(Color.Black.copy(alpha = 0.36f), Color.Transparent, Color.Transparent)
+                )
+            )
+        )
+
+        if (item == null) {
+            Text("加载中...", color = Color.White, modifier = Modifier.align(Alignment.Center))
+        } else {
+            val compact = maxWidth < 900.dp || maxHeight < 500.dp
+            val leftPadding = if (compact) 24.dp else 48.dp
+            LaunchedEffect(playableItem?.id, compact) {
+                if (playableItem != null && !compact) playFocusRequester.requestFocus()
             }
-            when (item.type) {
-                "Series" -> {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    .padding(start = leftPadding, end = leftPadding),
+            ) {
+                Spacer(Modifier.height(if (compact) 112.dp else 176.dp))
+                if (item.imageTags?.logo != null) {
+                    AsyncImage(
+                        model = imageUrl(item.id, "Logo", item.imageTags.logo, 900),
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.CenterStart,
+                        modifier = Modifier.width(if (compact) 300.dp else 410.dp).height(if (compact) 90.dp else 96.dp),
+                    )
+                } else {
+                    Text(
+                        item.name,
+                        color = Color.White,
+                        style = if (compact) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.displayMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    item.communityRating?.takeIf { it > 0f }?.let { rating ->
+                        Text(
+                            String.format(java.util.Locale.US, "%.1f", rating),
+                            color = Color(0xFF343434),
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xFFFFC400)).padding(horizontal = 11.dp, vertical = 5.dp),
+                        )
+                    }
+                    item.productionYear?.let { Text(it.toString(), color = Color.White, style = MaterialTheme.typography.titleLarge) }
+                    if (item.type == "Series") {
+                        Text("共${seasonsState.value.size}季", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    }
+                    item.genres?.take(3)?.takeIf { it.isNotEmpty() }?.let {
+                        Text(it.joinToString(" · "), color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 1)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DetailRoundIcon(Icons.Default.Movie, "预告片") { }
+                    DetailRoundIcon(Icons.Default.MusicNote, "音轨") { }
+                    DetailRoundIcon(Icons.Default.Subtitles, "字幕") { }
+                    DetailRoundIcon(Icons.Default.FileDownload, "下载") { }
                     if (seasonsState.value.isNotEmpty()) {
-                        SectionTitle("季")
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(seasonsState.value) { season ->
-                                val label = season.name ?: "第${season.indexNumber ?: 0}季"
-                                TvButton(label) { selectedSeasonId = season.id }
+                        val selectedIndex = seasonsState.value.indexOfFirst { it.id == selectedSeasonId }.coerceAtLeast(0)
+                        TvButton(
+                            text = seasonsState.value[selectedIndex].name ?: "第 ${selectedIndex + 1} 季",
+                            height = 46,
+                            horizontalPadding = 22,
+                            containerColor = Color.White.copy(alpha = 0.34f),
+                        ) {
+                            val next = (selectedIndex + 1) % seasonsState.value.size
+                            selectedSeasonId = seasonsState.value[next].id
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (playableItem != null) {
+                        val playLabel = if (item.type == "Series" || item.type == "Season") {
+                            "播放第${playableItem.indexNumber ?: 1}集"
+                        } else {
+                            "播放"
+                        }
+                        TvButton(
+                            text = playLabel,
+                            modifier = Modifier.width(128.dp),
+                            height = 48,
+                            horizontalPadding = 12,
+                            containerColor = Color(0xFFF1F1F1),
+                            contentColor = Color(0xFF333333),
+                            focusRequester = playFocusRequester,
+                        ) { onPlay(playableItem, playableItem.mediaSources?.firstOrNull()?.id) }
+                    }
+                    DetailRoundIcon(Icons.Default.Search, "搜索", onClick = onSearch)
+                    DetailRoundIcon(Icons.Default.Check, "标记已看", active = played) {
+                        played = !played
+                        scope.launch {
+                            val api = RetrofitClient.getApiService()
+                            if (played) api.markPlayedItem(RetrofitClient.getUserId(), item.id)
+                            else api.deletePlayedItem(RetrofitClient.getUserId(), item.id)
+                        }
+                    }
+                    DetailRoundIcon(if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "收藏", active = favorite) {
+                        favorite = !favorite
+                        scope.launch {
+                            val api = RetrofitClient.getApiService()
+                            if (favorite) api.markFavorite(RetrofitClient.getUserId(), item.id)
+                            else api.unmarkFavorite(RetrofitClient.getUserId(), item.id)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                val episode = playableItem
+                val runtime = episode?.runTimeTicks ?: item.runTimeTicks
+                val summaryTitle = buildString {
+                    if (episode != null && episode !== item) append("第${episode.indexNumber ?: 1}集")
+                    else append(item.name)
+                    runtime?.let { append(" · ${formatRuntime(it)}") }
+                }
+                Text(summaryTitle, color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                MediaBadges(episode ?: item)
+                val overview = episode?.overview?.takeIf { it.isNotBlank() } ?: item.overview.orEmpty()
+                if (overview.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        overview,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = if (compact) 5 else 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(if (compact) 1f else 0.62f),
+                    )
+                }
+                if (episodesState.value.isNotEmpty()) {
+                    Spacer(Modifier.height(20.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp), contentPadding = PaddingValues(bottom = 20.dp)) {
+                        items(episodesState.value, key = { it.id }) { episodeItem ->
+                            DetailEpisodeCard(episodeItem) {
+                                onPlay(episodeItem, episodeItem.mediaSources?.firstOrNull()?.id)
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
-                        if (episodesState.value.isNotEmpty()) {
-                            SectionTitle("剧集")
-                            EpisodeList(episodesState.value, onPlay)
-                        }
                     }
-                }
-                "Season" -> {
-                    if (episodesState.value.isNotEmpty()) {
-                        SectionTitle("剧集")
-                        EpisodeList(episodesState.value, onPlay)
-                    }
-                }
-                else -> {
-                    Spacer(Modifier.height(24.dp))
-                    Row {
-                        TvButton("播放") { onPlay(item, item.mediaSources?.firstOrNull()?.id) }
-                    }
+                } else {
+                    Spacer(Modifier.height(28.dp))
                 }
             }
         }
@@ -760,22 +1765,147 @@ private fun DetailScreen(
 }
 
 @Composable
-private fun EpisodeList(episodes: List<MediaItem>, onPlay: (MediaItem, String?) -> Unit) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(episodes) { episode ->
-            Row(
-                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+private fun DetailRoundIcon(
+    icon: ImageVector,
+    contentDescription: String,
+    active: Boolean = false,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .size(44.dp)
+            .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
+            .scale(if (focused) 1.06f else 1f)
+            .clip(RoundedCornerShape(50))
+            .background(if (active) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.34f))
+            .tvFocusBorder(focused, RoundedCornerShape(50)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun MediaBadges(item: MediaItem) {
+    val source = item.mediaSources?.firstOrNull() ?: return
+    val video = source.mediaStreams?.firstOrNull { it.type == "Video" }
+    val labels = buildList {
+        video?.height?.let { add(if (it >= 2160) "4K" else "${it}P") }
+        video?.videoRangeType?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+        source.container.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+        source.size?.takeIf { it > 0 }?.let { add(String.format(java.util.Locale.US, "%.2fG", it / 1_073_741_824.0)) }
+        source.bitrate?.takeIf { it > 0 }?.let { add(String.format(java.util.Locale.US, "%.1fMbps", it / 1_000_000.0)) }
+    }
+    if (labels.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+        labels.forEach { label ->
+            Text(
+                label,
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.48f), RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailEpisodeCard(episode: MediaItem, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        Modifier.width(194.dp).tvClickable(onClick = onClick, onFocusChanged = { focused = it }).scale(if (focused) 1.04f else 1f),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(Color(0xFF2C2119)).tvFocusBorder(focused, shape),
+        ) {
+            AsyncImage(
+                model = imageUrl(episode.id, "Primary", episode.imageTags?.primary, 640),
+                contentDescription = episode.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                Modifier.size(38.dp).align(Alignment.Center).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(Modifier.weight(1f)) {
-                    val idx = episode.indexNumber
-                    val title = if (idx != null) "第${idx}集 ${episode.name}" else episode.name
-                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium)
-                    if (episode.overview != null) {
-                        Text(episode.overview, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                Icon(Icons.Default.PlayArrow, contentDescription = "播放", tint = Color(0xFF333333), modifier = Modifier.size(26.dp))
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text("第${episode.indexNumber ?: 1}集 ${episode.name}", color = Color.White, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+private fun formatRuntime(ticks: Long): String {
+    val totalMinutes = ticks / 600_000_000L
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0) "${hours}小时${minutes}分钟" else "${minutes}分钟"
+}
+
+// ===== Favorites =====
+@Composable
+private fun FavoritesScreen(
+    server: ServerConfig?,
+    onOpenDetail: (String) -> Unit,
+    onBack: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenServers: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    val favorites = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(server) {
+        val s = server ?: return@LaunchedEffect
+        runCatching {
+            RetrofitClient.getApiService().getFavoriteItems(
+                RetrofitClient.getUserId(), "IsFavorite", true,
+                "SortName", "Ascending",
+                "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,CommunityRating,ChildCount,RecursiveItemCount,UserData,SeriesName,ParentIndexNumber,IndexNumber,SeriesId",
+                "Movie,Series", true, "Primary,Backdrop,Thumb", 200,
+            ).body()?.items ?: emptyList()
+        }.onSuccess { favorites.value = it }
+        loaded = true
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxWidth < 900.dp || maxHeight < 500.dp
+        val columns = if (compact) 4 else 6
+        val pagePadding = if (compact) 24.dp else 48.dp
+        Column(Modifier.fillMaxSize().padding(horizontal = pagePadding, vertical = 6.dp)) {
+            Row(Modifier.fillMaxWidth().height(54.dp), verticalAlignment = Alignment.CenterVertically) {
+                HomeServerChip(server?.alias ?: "服务器", onOpenServers)
+                Spacer(Modifier.weight(1f))
+                HomeNavChip("媒体", Icons.Default.VideoLibrary, active = false, onClick = onBack)
+                HomeNavChip("收藏", Icons.Default.Favorite, active = true) {}
+                HomeNavChip("搜索", Icons.Default.Search, active = false, onClick = onOpenSearch)
+                HomeNavChip("", Icons.Default.Settings, active = false, onClick = onOpenSettings)
+            }
+            Spacer(Modifier.height(42.dp))
+            if (favorites.value.isEmpty()) {
+                if (loaded) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "暂无收藏内容",
+                            color = Color.White.copy(alpha = 0.5f),
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
                     }
                 }
-                TvButton("播放") { onPlay(episode, episode.mediaSources?.firstOrNull()?.id) }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(26.dp),
+                ) {
+                    gridItems(favorites.value, key = { it.id }) { favorite ->
+                        LibraryPosterCard(favorite) { onOpenDetail(favorite.id) }
+                    }
+                }
             }
         }
     }
@@ -787,63 +1917,63 @@ private fun SearchScreen(
     server: ServerConfig?,
     onOpenDetail: (String) -> Unit,
     onBack: () -> Unit,
+    onOpenFavorites: () -> Unit,
+    onOpenServers: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     val results = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
-    val suggestions = remember { mutableStateOf<List<IqiyiSuggestItem>>(emptyList()) }
-    val resultsListState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
+    val inputFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
-    fun doSearch() {
-        val s = server ?: return
-        scope.launch {
-            runCatching {
-                RetrofitClient.getApiService().searchItems(
-                    RetrofitClient.getUserId(), query, true,
-                    "PrimaryImageAspectRatio,BasicSyncInfo,SeriesName,ParentIndexNumber,IndexNumber,SeriesId",
-                    "", null,
-                ).body()?.items ?: emptyList()
-            }.onSuccess { results.value = it }
-            runCatching { IqiyiSuggestApi.fetchSuggestions(query) }
-                .onSuccess { suggestions.value = it }
-        }
+    LaunchedEffect(server, query) {
+        val s = server ?: return@LaunchedEffect
+        if (query.isNotBlank()) delay(350)
+        runCatching {
+            RetrofitClient.getApiService().searchItems(
+                RetrofitClient.getUserId(), query.trim(), true,
+                "PrimaryImageAspectRatio,BasicSyncInfo,ProductionYear,CommunityRating,ChildCount,RecursiveItemCount,UserData,SeriesName,ParentIndexNumber,IndexNumber,SeriesId",
+                "Movie,Series", 60,
+            ).body()?.items ?: emptyList()
+        }.onSuccess { results.value = it }
     }
+    LaunchedEffect(Unit) { inputFocusRequester.requestFocus() }
 
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("搜索", color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
-            TvButton("返回") { onBack() }
-        }
-        Spacer(Modifier.height(16.dp))
-        InputField("搜索关键词", query) { query = it }
-        Spacer(Modifier.height(8.dp))
-        TvButton("搜索") { doSearch() }
-        Spacer(Modifier.height(16.dp))
-        if (results.value.isNotEmpty()) {
-            SectionTitle("媒体库结果")
-            ItemRow(results.value, resultsListState, onOpenDetail)
-            Spacer(Modifier.height(16.dp))
-        }
-        if (suggestions.value.isNotEmpty()) {
-            SectionTitle("搜索联想")
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(suggestions.value) { s ->
-                    Row(
-                        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            val title = if (s.year > 0) "${s.name} (${s.year})" else s.name
-                            Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium)
-                            if (s.mainActor.isNotEmpty()) {
-                                Text(s.mainActor.joinToString(" / "), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                            }
-                        }
-                        TvButton("搜索") {
-                            query = s.name
-                            doSearch()
-                        }
-                    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxWidth < 900.dp || maxHeight < 500.dp
+        val columns = if (compact) 4 else 6
+        val pagePadding = if (compact) 18.dp else 48.dp
+        Column(Modifier.fillMaxSize().padding(horizontal = pagePadding, vertical = 6.dp)) {
+            Row(Modifier.fillMaxWidth().height(54.dp), verticalAlignment = Alignment.CenterVertically) {
+                HomeServerChip(server?.alias ?: "服务器", onOpenServers)
+                Spacer(Modifier.weight(1f))
+                HomeNavChip("媒体", Icons.Default.VideoLibrary, active = false, onClick = onBack)
+                HomeNavChip("收藏", Icons.Default.Favorite, active = false, onClick = onOpenFavorites)
+                HomeNavChip("搜索", Icons.Default.Search, active = true) {}
+                HomeNavChip("", Icons.Default.Settings, active = false, onClick = onOpenSettings)
+            }
+            Spacer(Modifier.height(20.dp))
+            TvOutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = "搜索",
+                keyboardType = KeyboardType.Text,
+                focusRequester = inputFocusRequester,
+            )
+            Spacer(Modifier.height(if (compact) 20.dp else 40.dp))
+            Text(
+                if (query.isBlank()) "推荐观看" else "搜索结果",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineMedium,
+            )
+            Spacer(Modifier.height(20.dp))
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 16.dp else 24.dp),
+                verticalArrangement = Arrangement.spacedBy(26.dp),
+            ) {
+                gridItems(results.value, key = { it.id }) { result ->
+                    LibraryPosterCard(result) { onOpenDetail(result.id) }
                 }
             }
         }
@@ -858,18 +1988,148 @@ private fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     var page by remember { mutableStateOf("main") }
-    when (page) {
-        "main" -> SettingsMain(server, serverPrefs, onBack = onBack, onOpen = { page = it })
-        "proxy" -> ProxySettingsPage(onBack = { page = "main" })
-        "decoder" -> DecoderSettingsPage(onBack = { page = "main" })
-        "dlna" -> DlnaSettingsPage(onBack = { page = "main" })
-        "playback" -> PlaybackSettingsPage(onBack = { page = "main" })
-        "sync" -> SyncSettingsPage(server, serverPrefs, onBack = { page = "main" }, onOpenQr = { page = it })
-        "qr_backup" -> QrBackupRoutesOverlay(server, serverPrefs, onBack = { page = "sync" })
-        "qr_icon" -> QrIconLibraryOverlay(onBack = { page = "sync" })
-        "qr_webdav" -> QrWebDavOverlay(onBack = { page = "sync" })
-        "qr_font" -> QrSubtitleFontOverlay(onBack = { page = "sync" })
-        "trakt" -> TraktSettingsPage(onBack = { page = "main" })
+    BackHandler {
+        if (page == "main") onBack() else page = "main"
+    }
+    val labels = listOf(
+        "main" to "配置",
+        "playback" to "播放",
+        "appearance" to "外观",
+        "proxy" to "网络",
+        "sync" to "同步",
+        "about" to "关于",
+    )
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f))) {
+        val compact = maxHeight < 400.dp
+        Row(
+            Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(if (compact) 0.82f else 0.75f)
+                .fillMaxHeight(if (compact) 0.94f else 0.85f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF181310))
+                .padding(horizontal = if (compact) 10.dp else 20.dp, vertical = if (compact) 5.dp else 10.dp),
+        ) {
+            Column(Modifier.width(if (compact) 160.dp else 200.dp).fillMaxHeight()) {
+                Text(
+                    "设置",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = if (compact) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
+                )
+                Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
+                labels.forEach { (key, label) ->
+                    SettingsTab(label = label, selected = page == key, compact = compact) { page = key }
+                    Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
+                }
+            }
+            Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
+            Box(Modifier.fillMaxHeight().width(1.dp).background(Color(0xFF4B4039)))
+            Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
+            Box(Modifier.weight(1f).fillMaxHeight().padding(top = if (compact) 27.dp else 47.dp)) {
+                when (page) {
+                    "main" -> SettingsActionPanel(server, serverPrefs, onOpen = { page = it })
+                    "features" -> FeatureSettingsPanel(server, serverPrefs, onOpen = { page = it })
+                    "playback" -> PlaybackSettingsPage(onBack = { page = "main" })
+                    "proxy" -> ProxySettingsPage(onBack = { page = "main" })
+                    "decoder" -> DecoderSettingsPage(onBack = { page = "main" })
+                    "dlna" -> DlnaSettingsPage(onBack = { page = "main" })
+                    "trakt" -> TraktSettingsPage(onBack = { page = "main" })
+                    "sync" -> SyncSettingsPage(server, serverPrefs, onBack = { page = "main" }, onOpenQr = { page = it })
+                    "qr_backup" -> QrBackupRoutesOverlay(server, serverPrefs, onBack = { page = "sync" })
+                    "qr_icon" -> QrIconLibraryOverlay(onBack = { page = "sync" })
+                    "qr_webdav" -> QrWebDavOverlay(onBack = { page = "sync" })
+                    "qr_font" -> QrSubtitleFontOverlay(onBack = { page = "sync" })
+                    "appearance" -> AppearanceSettingsPanel(onBack = { page = "main" })
+                    "about" -> AboutSettingsPanel(onBack = { page = "main" })
+                    else -> SettingsActionPanel(server, serverPrefs, onOpen = { page = it })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsTab(label: String, selected: Boolean, compact: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(if (compact) 36.dp else 50.dp)
+            .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
+            .clip(shape)
+            .background(if (selected) Color(0xFF70401D) else Color(0xFF39291F))
+            .tvFocusBorder(focused || selected, shape)
+            .padding(horizontal = if (compact) 18.dp else 30.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(label, color = Color.White, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
+    }
+}
+
+@Composable
+private fun SettingsActionPanel(server: ServerConfig?, serverPrefs: ServerPreferences, onOpen: (String) -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Text("配置", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(0.dp))
+        SettingsFeatureButton("功能按钮") { onOpen("features") }
+    }
+}
+
+@Composable
+private fun FeatureSettingsPanel(server: ServerConfig?, serverPrefs: ServerPreferences, onOpen: (String) -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Text("功能按钮", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium)
+        Text("以下设置为整个软件全局生效，不区分服务器。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(16.dp))
+        SettingsFeatureButton("网络与代理") { onOpen("proxy") }
+        Spacer(Modifier.height(10.dp))
+        SettingsFeatureButton("解码器与音频") { onOpen("decoder") }
+        Spacer(Modifier.height(10.dp))
+        SettingsFeatureButton("DLNA 投屏") { onOpen("dlna") }
+        Spacer(Modifier.height(10.dp))
+        SettingsFeatureButton("Trakt 同步") { onOpen("trakt") }
+        Spacer(Modifier.height(10.dp))
+        SettingsFeatureButton("退出登录") {
+            server?.let { serverPrefs.clearLastUsedServer() }
+            RetrofitClient.setAuthToken("", "")
+        }
+    }
+}
+
+@Composable
+private fun SettingsFeatureButton(label: String, onClick: () -> Unit) {
+    TvButton(
+        text = label,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        height = 55,
+        horizontalPadding = 24,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun AppearanceSettingsPanel(onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        Text("外观", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(20.dp))
+        Text("当前主题：暖棕深色", color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(12.dp))
+        TvButton("返回配置") { onBack() }
+    }
+}
+
+@Composable
+private fun AboutSettingsPanel(onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        Text("关于", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(20.dp))
+        Text("皮皮 TV", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+        Text("Emby Android TV 客户端", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(18.dp))
+        TvButton("返回配置") { onBack() }
     }
 }
 
@@ -940,10 +2200,24 @@ private fun ProxySettingsPage(onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(8.dp))
-        InputField("地址", config.host) { save(config.copy(host = it)) }
-        InputField("端口", config.port.toString()) { v -> v.toIntOrNull()?.let { save(config.copy(port = it)) } }
-        InputField("用户名", config.username) { save(config.copy(username = it)) }
-        InputField("密码", config.password) { save(config.copy(password = it)) }
+        TvOutlinedTextField(value = config.host, onValueChange = { save(config.copy(host = it)) }, label = "地址")
+        Spacer(Modifier.height(16.dp))
+        TvOutlinedTextField(
+            value = config.port.toString(),
+            onValueChange = { v -> v.toIntOrNull()?.let { save(config.copy(port = it)) } },
+            label = "端口",
+            keyboardType = KeyboardType.Number,
+        )
+        Spacer(Modifier.height(16.dp))
+        TvOutlinedTextField(value = config.username, onValueChange = { save(config.copy(username = it)) }, label = "用户名")
+        Spacer(Modifier.height(16.dp))
+        TvOutlinedTextField(
+            value = config.password,
+            onValueChange = { save(config.copy(password = it)) },
+            label = "密码",
+            keyboardType = KeyboardType.Password,
+            visualTransformation = PasswordVisualTransformation(),
+        )
     }
 }
 
@@ -1015,9 +2289,13 @@ private fun DlnaSettingsPage(onBack: () -> Unit) {
         ToggleRow("启用 DLNA 投屏", config.enabled) {
             scope.launch { settings.saveConfig(config.copy(enabled = it)) }
         }
-        InputField("设备名称", config.deviceName) { v ->
-            scope.launch { settings.saveConfig(config.copy(deviceName = v)) }
-        }
+        TvOutlinedTextField(
+            value = config.deviceName,
+            onValueChange = { v ->
+                scope.launch { settings.saveConfig(config.copy(deviceName = v)) }
+            },
+            label = "设备名称",
+        )
     }
 }
 
@@ -1048,8 +2326,9 @@ private fun TraktSettingsPage(onBack: () -> Unit) {
             TvButton("返回") { onBack() }
         }
         Spacer(Modifier.height(16.dp))
-        InputField("Client ID", clientId) { clientId = it; persistCredentials() }
-        InputField("Client Secret", clientSecret) { clientSecret = it; persistCredentials() }
+        TvOutlinedTextField(value = clientId, onValueChange = { clientId = it; persistCredentials() }, label = "Client ID")
+        Spacer(Modifier.height(16.dp))
+        TvOutlinedTextField(value = clientSecret, onValueChange = { clientSecret = it; persistCredentials() }, label = "Client Secret")
         Spacer(Modifier.height(8.dp))
         if (authorized) {
             Text("已授权", color = Color(0xFF4CAF50), style = MaterialTheme.typography.titleMedium)
@@ -1421,38 +2700,6 @@ private fun QrServerOverlay(
             }
             Spacer(Modifier.height(24.dp))
             TvButton("返回") { onBack() }
-        }
-    }
-}
-
-@Composable
-private fun InputField(label: String, value: String, onChange: (String) -> Unit) {
-    var editing by remember { mutableStateOf(false) }
-    Column(Modifier.padding(vertical = 6.dp)) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .tvClickable(onClick = { editing = true }, onFocusChanged = {})
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(value.ifBlank { "（未填写）" }, color = Color.White)
-        }
-    }
-    if (editing) {
-        Dialog(
-            onDismissRequest = { editing = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            TvKeyboard(
-                initialValue = value,
-                title = label,
-                onDone = { onChange(it); editing = false },
-                onCancel = { editing = false },
-            )
         }
     }
 }

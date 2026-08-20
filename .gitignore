@@ -1,6 +1,7 @@
 # Gradle
 .gradle/
 .gradle-home/
+.kotlin/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 

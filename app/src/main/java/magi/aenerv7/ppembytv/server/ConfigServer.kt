@@ -37,11 +37,8 @@ internal class ConfigServer(
             session.parseBody(params)
             val postData = params["postData"]
                 ?: return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain; charset=UTF-8", "No data")
-            Log.d(TAG, "Received config data (raw): $postData")
-            val bytes = postData.toByteArray(Charsets.UTF_8)
-            Log.d(TAG, "Received config data (UTF-8): " + String(bytes, Charsets.UTF_8))
             val configData = gson.fromJson(postData, ConfigData::class.java)
-            Log.d(TAG, "Parsed config: alias=" + configData.alias + ", host=" + configData.host + ", port=" + configData.port)
+            Log.d(TAG, "Received server config: alias=${configData.alias}, host=${configData.host}, port=${configData.port}")
             val config = ServerConfig(
                 id = ServerPreferences(context).generateServerId(),
                 alias = configData.alias,

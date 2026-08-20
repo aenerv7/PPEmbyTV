@@ -23,8 +23,8 @@ android {
         applicationId = "magi.aenerv7.ppembytv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 3
-        versionName = (project.findProperty("versionName") as String?) ?: "0.3.1"
+        versionCode = 6
+        versionName = (project.findProperty("versionName") as String?) ?: "0.0.6"
     }
 
     signingConfigs {
@@ -115,6 +115,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.tv.material)
