@@ -1,171 +1,93 @@
 # PP TV（皮皮 TV）
 
-Android TV 用 Emby 客户端。英文名 **PP TV**，中文名 **皮皮 TV**，包名 `magi.aenerv7.ppembytv`。
+![PP TV](app/src/main/res/drawable-nodpi/banner.png)
 
-本版本是参考 [ChaiChaiEmbyTV](https://github.com/dh374374/ChaiChaiEmbyTV)（v0.3.1-alpha2，`com.dh.myembyapp`，即「柴柴emby」）的**反编译 APK 完全复刻**，并**移除了弹幕功能**。
+PP TV 是一款面向 Android TV 的 Emby 客户端，采用与应用图标一致的蓝黑界面，同时支持电视遥控器和触摸操作。
 
-> 背景：参考项目的 GitHub 源码已全部删除（所有分支/标签只剩 README），因此只能依赖其 APK 反编译产物（`.tools/apk-decompiled/`，jadx 输出）进行复刻。
+> 使用前需要已有可访问的 Emby 服务器和账号。PP TV 不是 Emby 官方应用。
 
-## 功能特色
+## 主要功能
 
-- 🎬 **TV 优先、全局触摸** - 所有主流程控件同时支持 D-pad/确认键与触摸点击；手机和平板强制横屏，不维护竖屏布局
-- 🎮 **播放器功能** - 参考柴柴 Emby 的图标工具栏，支持播放/暂停、前后 10 秒、倍速（0.5x~2x）、音轨、字幕、断点续播、直连/转码自动选择和播放进度同步
-- 📱 **扫码配置** - 电视端本地启动 NanoHTTPD 配置服务，手机扫码填表即可配置（服务器 / 代理 / 备用线路 / 服务器图标库 / 在线字幕 / WebDAV / 字幕字体等 9 项）
-- ⌨️ **电视软键盘** - 内置屏幕键盘，可手动输入服务器地址/账号/密码等
-- 📺 **多服务器管理** - 多 Emby 服务器、账号登录（AuthenticateByName）、备用线路（BackupRoute）
-- 🌐 **代理支持** - 全局 http/https/socks5 代理（SOCKS5 域名由代理解析，可绕过局域网、可「仅直连」）
-- 🖥️ **DLNA 投屏** - 本地 DLNA 渲染器（SSDP 发现 + UPnP SOAP），可被手机/其它设备投屏
-- 🎞️ **剧集与直播** - 剧集详情（季 → 集 → 播放）、Live TV 频道列表与当前节目
-- 🔍 **搜索联想** - 全局搜索 + 爱奇艺 suggest 联想
-- 🎬 **片头片尾跳过**、**字幕偏好**、**解码器/音频直通设置**
-- 🔗 **Trakt 同步** - 设备码授权 + 播放进度/已看同步设置
-- 💾 **播放进度同步** - 自动同步到 Emby 服务器
+- 浏览媒体库、继续观看和最新内容
+- 搜索电影、剧集及其他媒体
+- 查看剧集季/集信息，收藏或标记为已看
+- 播放、暂停、前后跳转、倍速播放
+- 切换音轨和字幕，自动同步播放进度
+- 管理多个 Emby 服务器和备用线路
+- 支持直播频道、DLNA 投屏、网络代理和 WebDAV 配置同步
+- 支持遥控器、键盘和触摸屏操作
 
-## 技术栈
+## 下载
 
-- **UI**: Kotlin + Jetpack Compose + TV Material（`androidx.tv:tv-material`，因 `tv-material3` 未发布到 Maven）
-- **播放器**: AndroidX Media3（ExoPlayer + HLS/DASH）
-- **网络**: Retrofit + OkHttp + **Gson**
-- **架构**: Kotlin Coroutines + Flow + DataStore（部分）+ SharedPreferences
-- **其他**: ZXing（二维码生成）、NanoHTTPD（本地扫码配置服务）、Coil（图片加载）、Lottie
+请前往 [Releases](https://github.com/aenerv7/PPEmbyTV/releases/latest) 下载最新版本。
 
-## 界面说明
+| APK | 适用设备 |
+|---|---|
+| `app-universal-release.apk` | 不确定设备架构时选择，推荐普通用户下载 |
+| `app-arm64-v8a-release.apk` | 大多数较新的电视和电视盒子 |
+| `app-armeabi-v7a-release.apk` | 较老的 32 位设备 |
 
-- **服务器列表**：多服务器管理，手动添加 / 扫码配置 / 进入 / 删除
-- **首页**：媒体库入口、继续观看、最新媒体
-- **媒体库**：分页网格浏览（电影/剧集/直播等，直播走专用频道列表）
-- **搜索**：遥控器使用电视软键盘，触屏设备使用系统键盘；支持全局搜索（含爱奇艺联想）
-- **详情页**：电影详情（简介、播放/已看/收藏）、剧集详情（季 → 集 → 播放）
-- **播放器**：与参考应用一致的图标控件，支持播放/暂停、前后 10 秒、倍速、音轨、字幕、断点续播和进度同步
-- **设置**：代理 / 解码器与音频直通 / DLNA / 播放与字幕（片头片尾跳过、字幕亮度）/ Trakt 授权 / 同步与其它
+系统要求：Android 6.0 或更高版本。
 
-## 构建
+## 安装与登录
 
-**构建/测试环境已自包含在项目目录内**（不依赖系统安装）：
+1. 下载 APK，并传到电视或电视盒子上。
+2. 在系统设置中允许安装未知来源应用，然后安装 PP TV。
+3. 打开应用，选择“添加服务器”。
+4. 使用以下任一方式完成配置：
+   - 手动填写 Emby 服务器地址、端口、用户名和密码。
+   - 使用手机扫描电视上的二维码，在手机浏览器中填写信息。
+5. 保存并连接后，即可进入首页浏览和播放媒体。
 
-| 目录 | 内容 |
-|------|------|
-| `.tools/jdk17` | JDK 17（Temurin） |
-| `.android-sdk` | Android SDK（platform 35、build-tools、platform-tools、emulator、TV 系统镜像） |
-| `.gradle-home` | Gradle 用户目录（依赖缓存、wrapper 发行版） |
-| `.android` | Android 用户目录（AVD `ppembytv_tv`、adb key、AGP prefs 缓存） |
-| `.tools/mock-emby` | Mock Emby 测试服务器（端到端冒烟测试用） |
-| `.tools/jadx`、`.tools/apk-decompiled` | 参考 APK 反编译产物（复刻依据） |
+扫码配置时，手机和电视需要处于可以互相访问的同一局域网。
 
-> 上述目录已在 `.gitignore` 中排除（体积大且为本地环境）。`local.properties` 与
-> `gradle.properties` 已指向项目内路径；`build.cmd` / `test-emulator.cmd` 会设置
-> `JAVA_HOME`、`GRADLE_USER_HOME`、`ANDROID_HOME`、`ANDROID_USER_HOME`、
-> `ANDROID_PREFS_ROOT` 等环境变量，保证构建/测试全程不向项目目录外写任何文件。
-> 若整目录迁移，请同步更新上述脚本与属性文件中的绝对路径。
+## 操作说明
 
-```bash
-# 一键构建（自动使用项目内 JDK/SDK/Gradle 缓存，参数透传给 gradlew）
-build.cmd :app:assembleDebug
+### 电视遥控器
 
-# Release（ABI 拆分：arm64-v8a / armeabi-v7a / universal；未开混淆）
-build.cmd :app:assembleRelease
-```
+- 方向键：移动焦点
+- 确认键：打开或执行当前操作
+- 返回键：返回上一页或退出播放器
+- 播放时按方向键：显示播放器控制栏
 
-模拟器测试（环境变量全部指向项目内目录）：
+### 手机和平板
 
-```bash
-test-emulator.cmd avd-list         # 列出项目内 AVD
-test-emulator.cmd boot             # 无窗口启动模拟器
-test-emulator.cmd install-debug    # 安装 debug APK
-```
+- 所有主要界面均支持触摸操作
+- 应用固定使用横屏，不提供竖屏布局
+- 点击输入框会使用系统键盘
 
-> 模拟器自身会把 adb 密钥写入 `%USERPROFILE%\.android`（模拟器固定行为，无法重定向），
-> `test-emulator.cmd` 会在会话结束后自动删除该目录并关闭 adb server，保证项目外无残留。
+## 播放器
 
-Mock Emby 服务器（配合 `adb reverse tcp:8096 tcp:8096` 做端到端测试）：
+播放器提供播放/暂停、前后 10 秒、倍速、音轨和字幕切换等常用操作。播放进度会同步回 Emby，之后可以从“继续观看”恢复播放。
 
-```bash
-powershell -File .tools\mock-emby\mock-emby.ps1
-```
+能否直接播放取决于设备解码能力、媒体格式和服务器设置；无法直连时，Emby 服务器可能会进行转码。
 
-## UI 对照与设备基线
+## 常见问题
 
-- 参考 APK：`.tools/apk/`（包名 `com.dh.myembyapp`）。
-- 参考截图：`.tools/ui-baseline/reference/`；当前实现截图：`.tools/ui-baseline/current/`。
-- Android TV 验收视口：`1920x1080 @ 320 dpi`，以遥控器方向键、确认键和返回键为首要输入方式。
-- 手机验收视口：横屏 `2400x1080 @ 480 dpi`；Activity 通过 Manifest 全局锁定横屏。
-- 真实服务测试参数保存在本地 `.tools/LOCAL_TEST_CREDENTIALS.md`，该文件不得提交，也不得把账号或令牌写入日志和截图说明。
+**无法连接服务器**
 
-产物位于 `app/build/outputs/apk/`：
+检查服务器地址和端口是否正确，并确认当前设备能够访问该地址。使用 HTTPS、自定义端口或代理时，也请检查对应设置。
 
-| 架构 | 说明 |
-|------|------|
-| `arm64-v8a` | 64 位 ARM 设备（多数新电视盒子） |
-| `armeabi-v7a` | 32 位 ARM 设备 |
-| `universal` | 全架构通用包，体积较大 |
+**扫码后打不开配置页面**
 
-> Release 使用 debug 签名，可直接侧载安装；正式分发请自行配置签名。
+确认手机和电视处于同一局域网，且路由器没有启用设备隔离。也可以改用电视端手动填写。
 
-## 使用说明
+**视频无法播放或卡顿**
 
-1. 安装 APK 到 Android TV 设备
-2. 打开应用：
-   - **手动添加**：填写服务器地址、端口、用户名、密码（电视软键盘输入），点击「保存并连接」
-   - **扫码配置**：电视屏幕显示二维码，手机扫码后在浏览器中填写服务器与账号信息，点击「同步到电视」
-3. 添加后进入首页即可浏览和播放媒体
-4. 在「设置」中配置 http/socks5 代理、解码器、DLNA、Trakt 等（均为可选）
-5. 播放进度自动同步回 Emby 服务器
+尝试调整解码设置或网络线路，并检查 Emby 服务器是否具备足够的转码能力。
 
-## 扫码配置原理
+**手机界面为什么不能竖屏**
 
-电视端在局域网启动 NanoHTTPD 配置服务，屏幕展示 `http://<电视IP>:<端口>/` 的二维码；
-手机扫码后在网页表单中填写并提交，电视端自动保存。各配置项端口（被占用时自动回退）：
+PP TV 以 Android TV 为首要使用场景，手机和平板也统一使用横屏界面。
 
-- 服务器：8765（回退 8750~8764）
-- 代理：8760~8764
-- 备用线路：8771~8799
-- 在线字幕：8770~8799
-- WebDAV 同步：8772~8799
-- 字幕字体上传：8768~8799
-- 服务器图标库：8780~8799
-- 搜索输入：8767~8799
+## 反馈问题
 
-## 目录结构
+遇到问题时，请在 [Issues](https://github.com/aenerv7/PPEmbyTV/issues) 中提供设备型号、Android 版本、问题描述和复现步骤。请勿公开服务器密码、访问令牌或其他账号信息。
 
-```
-app/src/main/java/magi/aenerv7/ppembytv/
-├── MainActivity.kt              # 入口 + 恢复服务器 + DLNA 接收器
-├── PPEmbyTVApp.kt               # Application：Coil 图片加载器、崩溃处理、代理加载
-├── DlnaPlayRequestReceiver.kt   # DLNA 投屏广播接收器
-├── data/
-│   ├── model/                   # Emby + Trakt 模型（Gson @SerializedName）、媒体源优先级
-│   ├── api/                     # Retrofit 接口、OkHttp 客户端（RetrofitClient/EmbyApiService/Trakt/爱奇艺）
-│   ├── preferences/             # SharedPreferences 持久化（Server/User/AggregateSearch）
-│   └── *.kt                     # 代理/解码器/字幕/片头片尾/Trakt/WebDAV/在线字幕 设置
-├── server/                      # 9 个 NanoHTTPD 扫码配置服务 + Manager
-├── dlna/                        # DLNA 渲染器（SSDP + UPnP SOAP）
-├── ui/
-│   ├── AppRoot.kt               # 全部屏幕 + 导航 + 设置子页 + 扫码二维码 overlay
-│   ├── components/              # TV 焦点组件（TvComponents）、电视软键盘（TvKeyboard）
-│   ├── player/                  # Media3 播放器
-│   └── theme/                   # 深色主题
-└── util/                        # 二维码生成（ZXing）
-```
-
-## 已知限制
-
-反编译产物里 UI/同步等执行逻辑被 R8 混淆（无 mapping 文件），以下功能按**自实现**补齐（不再是逐字复刻）：
-
-- **WebDAV 同步（自实现）**：设置 → 同步与其它 → 立即上传 / 立即下载；固定使用目录 `PPEmbyTV/` 与文件 `sync-config.json`，同步服务器配置与应用设置（代理 / 图标库 URL / DLNA / 解码器 / Trakt 基础配置 / 剧集与媒体库排序），为手动触发。
-- **ASS 字幕增强渲染（自实现）**：手机扫码上传 ttf/otf 字体后，播放器通过 Media3 SubtitleView（CaptionStyleCompat）应用自定义字体；「播放与字幕设置」中可调整字幕字号与颜色。
-- **在线字幕（Assrt）已完全移除**，不再提供。
-
-未实现：
-- 参考 APK 的 ASS 走 libass 原生位图渲染（native 依赖重），未移植；当前为 Media3 文本字幕增强渲染。
-
-详细进展、踩坑记录与下一步见 [`HANDOFF.md`](HANDOFF.md)。
+开发与维护说明见 [HANDOFF.md](HANDOFF.md)。
 
 ## 致谢
 
-- [Emby](https://emby.media/) - 媒体服务器
-- [ChaiChaiEmbyTV](https://github.com/dh374374/ChaiChaiEmbyTV) - 复刻参考（基于其反编译 APK）
-- [androidx media](https://github.com/androidx/media) - 播放器
+界面和交互参考 [ChaiChaiEmbyTV](https://github.com/dh374374/ChaiChaiEmbyTV)。感谢 Emby 与 AndroidX Media 等项目。
 
-## 许可证
-
-本项目仅供学习交流使用。
+本项目仅供学习与交流使用。
