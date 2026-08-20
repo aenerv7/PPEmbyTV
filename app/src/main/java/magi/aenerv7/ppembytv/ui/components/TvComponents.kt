@@ -64,9 +64,10 @@ fun Modifier.tvClickable(
     } else {
         Modifier.focusable()
     }
+    // The observer must precede the focus target or it will not receive that target's state changes.
     return this
-        .then(focusMod)
         .onFocusChanged { onFocusChanged(it.isFocused) }
+        .then(focusMod)
         .onKeyEvent { event ->
             if (event.type == KeyEventType.KeyUp &&
                 (event.key == Key.Enter || event.key == Key.DirectionCenter || event.key == Key.NumPadEnter)

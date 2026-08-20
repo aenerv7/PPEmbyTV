@@ -1313,7 +1313,7 @@ private fun HomeNavChip(
             .tvClickable(onClick = onClick, onFocusChanged = { focused = it })
             .clip(shape)
             .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
-            .tvFocusBorder(focused || active, shape)
+            .tvFocusBorder(focused, shape)
             .padding(
                 horizontal = when {
                     label.isBlank() -> 12.dp
